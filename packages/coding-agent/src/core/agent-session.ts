@@ -8323,7 +8323,7 @@ export class AgentSession {
 			!isCursorZeroTokenResourceExhausted(message) &&
 			!isClassifierRefusal(message) &&
 			!message.content.some((content) => content.type === "toolCall") &&
-			this._retryFallback.canTryFallback()
+			(this._retryFallback.canTryFallback() || this._extensionRunner.hasHandlers("before_retry_fallback"))
 		);
 	}
 

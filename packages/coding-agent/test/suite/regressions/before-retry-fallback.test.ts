@@ -8,6 +8,8 @@ const fallback = "faux/faux-2";
 const billingError = "billing error: insufficient_quota";
 const noHint429 = "HTTP 429: rate_limit_exceeded - All tokens rate limited";
 const transient500 = "HTTP 500: internal_error";
+const xaiCreditsError =
+	'OpenAI API error (403): 403 "You have run out of credits or need a Grok subscription."';
 
 type SeenFallbackEvent = Pick<BeforeRetryFallbackEvent, "type" | "provider" | "model" | "reason">;
 
@@ -101,6 +103,31 @@ describe("before_retry_fallback", () => {
 		expect(harness.eventsOfType("retry_fallback_applied")).toEqual([]);
 		expect(harness.eventsOfType("auto_retry_start").map((event) => event.delayMs)).toEqual([0]);
 		expect(harness.eventsOfType("auto_retry_end").map((event) => event.success)).toEqual([true]);
+	});
+
+	it("allows an account extension retry when no native fallback chain exists", async () => {
+		const seen: SeenFallbackEvent[] = [];
+		const harness = await createHarness({
+			models: [{ id: "faux-1" }],
+			settings: {
+				retry: {
+					enabled: true,
+					maxRetries: 1,
+					baseDelayMs: 1,
+				},
+			},
+			extensionFactories: [retryOnceFactory(seen)],
+		});
+		harnesses.push(harness);
+		harness.setResponses([errorTurn(xaiCreditsError), fauxAssistantMessage("account retry recovered")]);
+
+		await harness.session.prompt("retry account without a model chain");
+
+		expect(seen).toEqual([
+			{ type: "before_retry_fallback", provider: "faux", model: "faux-1", reason: "hard-error" },
+		]);
+		expect(harness.faux.getCallLog().map((call) => call.modelId)).toEqual(["faux-1", "faux-1"]);
+		expect(harness.eventsOfType("retry_fallback_applied")).toEqual([]);
 	});
 
 	it("retries the same model once on a no-hint 429 before native fallback", async () => {
