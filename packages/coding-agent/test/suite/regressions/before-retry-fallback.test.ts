@@ -7,9 +7,9 @@ const primary = "faux/faux-1";
 const fallback = "faux/faux-2";
 const billingError = "billing error: insufficient_quota";
 const noHint429 = "HTTP 429: rate_limit_exceeded - All tokens rate limited";
+const tier2Hint429 = "HTTP 429: rate_limit_exceeded (retry-after-ms: 1258000)";
 const transient500 = "HTTP 500: internal_error";
-const xaiCreditsError =
-	'OpenAI API error (403): 403 "You have run out of credits or need a Grok subscription."';
+const xaiCreditsError = 'OpenAI API error (403): 403 "You have run out of credits or need a Grok subscription."';
 
 type SeenFallbackEvent = Pick<BeforeRetryFallbackEvent, "type" | "provider" | "model" | "reason">;
 
@@ -79,6 +79,10 @@ function observeFactory(seen: SeenFallbackEvent[]) {
 	};
 }
 
+function stopFactory(pi: ExtensionAPI) {
+	pi.on("before_retry_fallback", () => ({ action: "stop" }));
+}
+
 describe("before_retry_fallback", () => {
 	const harnesses: Harness[] = [];
 
@@ -123,9 +127,7 @@ describe("before_retry_fallback", () => {
 
 		await harness.session.prompt("retry account without a model chain");
 
-		expect(seen).toEqual([
-			{ type: "before_retry_fallback", provider: "faux", model: "faux-1", reason: "billing" },
-		]);
+		expect(seen).toEqual([{ type: "before_retry_fallback", provider: "faux", model: "faux-1", reason: "billing" }]);
 		expect(harness.faux.getCallLog().map((call) => call.modelId)).toEqual(["faux-1", "faux-1"]);
 		expect(harness.eventsOfType("retry_fallback_applied")).toEqual([]);
 	});
@@ -146,6 +148,52 @@ describe("before_retry_fallback", () => {
 		expect(harness.faux.getCallLog().map((call) => call.modelId)).toEqual(["faux-1", "faux-1"]);
 		expect(harness.eventsOfType("retry_fallback_applied")).toEqual([]);
 		expect(harness.eventsOfType("auto_retry_start").map((event) => event.delayMs)).toEqual([0]);
+	});
+
+	it("keeps a no-hint 429 terminal when stop wins across handlers", async () => {
+		const harness = await createHarness({
+			models: [{ id: "faux-1" }, { id: "faux-2" }],
+			settings: fallbackSettings(),
+			extensionFactories: [
+				(pi) => {
+					pi.on("before_retry_fallback", () => ({ action: "retry-same-model" }));
+				},
+				stopFactory,
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([errorTurn(noHint429), fauxAssistantMessage("unexpected replay")]);
+
+		await harness.session.prompt("stop no-hint retry");
+
+		expect(harness.faux.getCallLog().map((call) => call.modelId)).toEqual(["faux-1"]);
+		expect(harness.eventsOfType("auto_retry_start")).toEqual([]);
+		expect(harness.eventsOfType("retry_fallback_applied")).toEqual([]);
+	});
+
+	it("keeps a tier-two 429 terminal when an extension stops fallback", async () => {
+		const harness = await createHarness({
+			models: [{ id: "faux-1" }, { id: "faux-2" }],
+			settings: {
+				retry: {
+					enabled: true,
+					maxRetries: 1,
+					baseDelayMs: 1,
+					hintedWaitCapMs: 8,
+					probeBackMaxMs: 3_600_000,
+					fallbackChains: { [primary]: [fallback] },
+				},
+			},
+			extensionFactories: [stopFactory],
+		});
+		harnesses.push(harness);
+		harness.setResponses([errorTurn(tier2Hint429), fauxAssistantMessage("unexpected replay")]);
+
+		await harness.session.prompt("stop tier-two retry");
+
+		expect(harness.faux.getCallLog().map((call) => call.modelId)).toEqual(["faux-1"]);
+		expect(harness.eventsOfType("auto_retry_start")).toEqual([]);
+		expect(harness.eventsOfType("retry_fallback_applied")).toEqual([]);
 	});
 
 	it("advances to the configured fallback exactly once after a second failure without another retry decision", async () => {

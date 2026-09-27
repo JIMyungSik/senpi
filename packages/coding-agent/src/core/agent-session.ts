@@ -8525,6 +8525,7 @@ export class AgentSession {
 		let switchedFallback = false;
 		let sameModelNativeRecovery = false;
 		let sameModelPreFallbackRetry = false;
+		let fallbackStopped = false;
 		let is429TierRouted = false;
 		let hintTierDelayMs: number | undefined;
 		const tryFallback = async (
@@ -8533,6 +8534,7 @@ export class AgentSession {
 		) => {
 			const decision = await this._beforeRetryFallback(reason);
 			if (decision === "stop") {
+				fallbackStopped = true;
 				return false;
 			}
 			if (decision === "retry-same-model") {
@@ -8708,6 +8710,10 @@ export class AgentSession {
 					if (switchedFallback) {
 						noteFallbackSwitch();
 					} else {
+						if (fallbackStopped) {
+							this._resolveRetry();
+							return "not-handled";
+						}
 						const degradedDelayMs = this._degradeRateLimitedWithoutFallback(tier, hintMs, message, errorMessage);
 						if (degradedDelayMs === undefined) return "not-handled";
 						hintTierDelayMs = degradedDelayMs;
@@ -8805,6 +8811,10 @@ export class AgentSession {
 							this._armProbeBackForDemotedSelector(selector, remainingHintMs);
 						}
 					} else {
+						if (fallbackStopped) {
+							this._resolveRetry();
+							return "not-handled";
+						}
 						const degradedDelayMs = this._degradeRateLimitedWithoutFallback(tier, hintMs, message, errorMessage);
 						if (degradedDelayMs === undefined) return "not-handled";
 						hintTierDelayMs = degradedDelayMs;

@@ -28,8 +28,9 @@ after core classification, so correcting it at the source is required.
 
 ### What changed
 
-- `packages/coding-agent/src/core/agent-session.ts`: `_handleRetryableError`'s local `tryFallback` wrapper asks `before_retry_fallback` immediately before `RetryFallbackController.tryFallback`. A `retry-same-model` decision keeps the current provider/model, increments the existing turn retry counter, uses zero delay, removes the failed assistant message, and schedules exactly one normal continuation. The retry decision is ignored once the turn budget is spent, so a handler cannot loop forever. A `stop` decision makes the current fallback attempt unavailable. When no handler returns an action, or a handler throws, native fallback is unchanged.
+- `packages/coding-agent/src/core/agent-session.ts`: `_handleRetryableError`'s local `tryFallback` wrapper asks `before_retry_fallback` immediately before `RetryFallbackController.tryFallback`. A `retry-same-model` decision keeps the current provider/model, increments the existing turn retry counter, uses zero delay, removes the failed assistant message, and schedules exactly one normal continuation. The retry decision is ignored once the turn budget is spent, so a handler cannot loop forever. A `stop` decision terminates the current retry/fallback attempt. When no handler returns an action, or a handler throws, native fallback is unchanged.
 - `packages/coding-agent/src/core/agent-session.ts`: hard provider failures also enter the hook when no native fallback candidate exists, allowing a session-local account extension to request the bounded same-model retry before the error becomes terminal.
+- `packages/coding-agent/src/core/agent-session.ts`: a `stop` decision remains distinct from native fallback unavailability through no-hint and tier-two rate-limit degradation, so those paths cannot schedule a same-model retry after an extension made the failure terminal.
 
 ### Why
 
