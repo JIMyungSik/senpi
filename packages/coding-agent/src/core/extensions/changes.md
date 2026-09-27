@@ -30,6 +30,7 @@
 
 - `packages/coding-agent/src/core/extensions/types.ts`: new `RetryFallbackReason`, `BeforeRetryFallbackEvent` (`provider`, `model`, `reason`; no credentials), and a discriminated `BeforeRetryFallbackEventResult` (`retry-same-model` or `stop`). `ExtensionEvent` includes the event. `ExtensionAPI.on("before_retry_fallback", ...)` is a typed value-returning subscription.
 - `packages/coding-agent/src/core/extensions/runner.ts`: `emitBeforeRetryFallback` dispatches every registered handler asynchronously, gives `stop` precedence over retry decisions, and fail-opens (reports `emitError`, continues) when a handler throws.
+- The hook also runs for an otherwise eligible hard provider failure with no native model candidate, so account-routing extensions can recover the same model without writing a dummy fallback chain.
 - `packages/coding-agent/docs/extensions.md`: documents the event, result, budget bound, and fail-open contract.
 
 ### Why

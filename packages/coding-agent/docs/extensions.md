@@ -905,6 +905,10 @@ Fired immediately before senpi applies native model fallback (`RetryFallbackCont
 
 A handler can request one same-model retry before the configured fallback chain advances, or stop model fallback for an error class the extension considers terminal. Neither decision writes shared settings. For a retry, Senpi keeps the current provider/model, removes the failed assistant message, uses zero delay, and schedules exactly one normal continuation.
 
+The event also fires for an otherwise eligible hard provider failure when no
+native fallback candidate exists. This lets an account-routing extension retry
+the same model with a newly selected credential without requiring a model chain.
+
 Retry decisions are bounded by the existing turn retry budget (`retry.maxRetries` or the provider's retry profile). Once that budget is spent, an `{ action: "retry-same-model" }` result is ignored and native fallback proceeds. `{ action: "stop" }` wins over retry decisions from other handlers. If no handler returns an action, native fallback is unchanged. Handler exceptions fail open: senpi reports an extension error and continues with native fallback.
 
 ```typescript
