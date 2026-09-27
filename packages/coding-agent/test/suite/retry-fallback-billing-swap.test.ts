@@ -185,6 +185,11 @@ describe("isBillingErrorMessage", () => {
 		["credits_required error code only", '429 {"error_code":"credits_required"}', true],
 		["openai usage_limit_reached 429", usageLimitExhaustedError, true],
 		[
+			"xAI credits exhausted 403",
+			'OpenAI API error (403): 403 "You have run out of credits or need a Grok subscription."',
+			true,
+		],
+		[
 			"openai usage_not_included",
 			'429 {"error":{"type":"usage_not_included","message":"This model is not included in your current plan"}}',
 			true,

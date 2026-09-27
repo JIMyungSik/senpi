@@ -1,3 +1,29 @@
+## 2026-09-27 - xAI credit exhaustion is a billing fallback
+
+### What changed
+
+- `packages/coding-agent/src/core/retry-fallback/billing.ts`: recognize xAI's
+  exact "run out of credits" and "need a Grok subscription" 403 wording as a
+  billing-class failure.
+
+### Why
+
+xAI returns permanent subscription/credit exhaustion as HTTP 403 text rather
+than `insufficient_quota`. Treating it as a generic hard error prevents the
+account-first extension hook and pinned model fallback policy from identifying
+the real quota condition.
+
+### Why an extension could not handle it
+
+Billing classification determines the normalized pre-fallback reason and
+whether the fallback remains pinned. Extensions receive that normalized reason
+after core classification, so correcting it at the source is required.
+
+### Expected merge conflict zones
+
+- Billing-pattern additions in
+  `packages/coding-agent/src/core/retry-fallback/billing.ts`.
+
 ## 2026-09-27 - Session-local `before_retry_fallback` can defer native model fallback
 
 ### What changed
