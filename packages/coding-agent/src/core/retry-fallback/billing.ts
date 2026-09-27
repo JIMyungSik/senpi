@@ -18,6 +18,8 @@ const BILLING_ERROR_PATTERN = new RegExp(
 		"purchase credits",
 		"credits[-_ ]required",
 		"credits are required",
+		"run out of credits",
+		"need a grok subscription",
 		// OpenAI hard-quota exhaustion (senpi#1969). Inlined to keep this module
 		// import-free; the single source of truth is USAGE_LIMIT_EXHAUSTION in
 		// @earendil-works/pi-ai utils/retry.ts.
