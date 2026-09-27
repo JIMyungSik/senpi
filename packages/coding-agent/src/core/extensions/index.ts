@@ -44,6 +44,8 @@ export type {
 	BeforeProviderHeadersEvent,
 	BeforeProviderRequestEvent,
 	BeforeProviderRequestEventResult,
+	BeforeRetryFallbackEvent,
+	BeforeRetryFallbackEventResult,
 	BuildSystemPromptOptions,
 	// Context
 	CompactOptions,
@@ -144,6 +146,7 @@ export type {
 	// Events - Resources
 	ResourcesDiscoverEvent,
 	ResourcesDiscoverResult,
+	RetryFallbackReason,
 	SendMessageHandler,
 	SendUserMessageHandler,
 	SessionBeforeCompactEvent,

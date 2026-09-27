@@ -212,6 +212,7 @@ import type {
 	CompactionRejectionCause,
 	LazyToolActivator,
 	ModelSelectSource,
+	RetryFallbackReason,
 } from "./extensions/types.ts";
 import { normalizeToolExposure, RUNTIME_EXTENSION_PATH } from "./extensions/types.ts";
 import { shouldWarnHighReasoning } from "./high-reasoning-warning.ts";
@@ -8455,6 +8456,33 @@ export class AgentSession {
 	}
 
 	/**
+	 * Ask session-local `before_retry_fallback` handlers whether to keep the
+	 * current provider/model for one more attempt before native fallback.
+	 * Fail-open: a thrown handler is reported and treated as no decision.
+	 * The turn retry budget bounds how many times a retry decision can be honored.
+	 */
+	private async _beforeRetryFallback(reason: RetryFallbackReason): Promise<"continue" | "retry-same-model" | "stop"> {
+		if (!this._extensionRunner.hasHandlers("before_retry_fallback")) {
+			return "continue";
+		}
+		const decision = await this._extensionRunner.emitBeforeRetryFallback({
+			type: "before_retry_fallback",
+			provider: this.model?.provider ?? "",
+			model: this.model?.id ?? "",
+			reason,
+		});
+		if (!decision) {
+			return "continue";
+		}
+		if (decision.action === "stop") return "stop";
+		if (this._retryAttempt + 1 > this._resolveRetryProfile().turn.maxRetries) {
+			return "continue";
+		}
+		this._retryAttempt += 1;
+		return "retry-same-model";
+	}
+
+	/**
 	 * Handle retryable errors with exponential backoff.
 	 * @returns whether retry continuation started, was blocked by compaction, or was not handled
 	 */
@@ -8487,12 +8515,21 @@ export class AgentSession {
 		const sameModelRemint = options.sameModelRemint === true;
 		let switchedFallback = false;
 		let sameModelNativeRecovery = false;
+		let sameModelPreFallbackRetry = false;
 		let is429TierRouted = false;
 		let hintTierDelayMs: number | undefined;
 		const tryFallback = async (
 			reason: Parameters<typeof this._retryFallback.tryFallback>[0],
 			failure: Parameters<typeof this._retryFallback.tryFallback>[1],
 		) => {
+			const decision = await this._beforeRetryFallback(reason);
+			if (decision === "stop") {
+				return false;
+			}
+			if (decision === "retry-same-model") {
+				sameModelPreFallbackRetry = true;
+				return true;
+			}
 			try {
 				return await this._retryFallback.tryFallback(reason, failure);
 			} catch (error) {
@@ -8501,6 +8538,11 @@ export class AgentSession {
 					return false;
 				}
 				throw error;
+			}
+		};
+		const noteFallbackSwitch = () => {
+			if (!sameModelPreFallbackRetry) {
+				this._retryAttempt = 1;
 			}
 		};
 		if (sameModelRemint) {
@@ -8549,7 +8591,7 @@ export class AgentSession {
 					return "not-handled";
 				}
 				// The fallback starts fresh; the failed model's transient attempts do not carry over.
-				this._retryAttempt = 1;
+				noteFallbackSwitch();
 			}
 		} else if (isRefusal) {
 			// Refusals are only retried through a new chain candidate. They never use
@@ -8591,7 +8633,9 @@ export class AgentSession {
 				this._resolveRetry();
 				return "not-handled";
 			}
-			this._retryAttempt++;
+			if (!sameModelPreFallbackRetry) {
+				this._retryAttempt++;
+			}
 		} else {
 			// A provider-stream stall is an ordinary transient failure: it consumes
 			// the same bounded same-model budget (the resolved profile's turn
@@ -8621,7 +8665,7 @@ export class AgentSession {
 						retryAfterMs: this._getProviderRetryDelayMs(errorMessage),
 					});
 					if (switchedFallback) {
-						this._retryAttempt = 1;
+						noteFallbackSwitch();
 					} else {
 						const exhaustedChainKey = this._retryFallback.exhaustedChainKey;
 						if (exhaustedChainKey) {
@@ -8653,7 +8697,7 @@ export class AgentSession {
 					// to same-model in-turn retries instead of failing the turn.
 					switchedFallback = await tryFallback("transient", { errorMessage });
 					if (switchedFallback) {
-						this._retryAttempt = 1;
+						noteFallbackSwitch();
 					} else {
 						const degradedDelayMs = this._degradeRateLimitedWithoutFallback(tier, hintMs, message, errorMessage);
 						if (degradedDelayMs === undefined) return "not-handled";
@@ -8668,7 +8712,7 @@ export class AgentSession {
 							retryAfterMs: this._getProviderRetryDelayMs(errorMessage),
 						});
 						if (switchedFallback) {
-							this._retryAttempt = 1;
+							noteFallbackSwitch();
 						} else {
 							const exhaustedChainKey = this._retryFallback.exhaustedChainKey;
 							if (exhaustedChainKey) {
@@ -8713,7 +8757,7 @@ export class AgentSession {
 								retryAfterMs: remainingHintMs,
 							});
 							if (switchedFallback) {
-								this._retryAttempt = 1;
+								noteFallbackSwitch();
 							} else {
 								const exhaustedChainKey = this._retryFallback.exhaustedChainKey;
 								if (exhaustedChainKey) {
@@ -8746,7 +8790,7 @@ export class AgentSession {
 						retryAfterMs: remainingHintMs,
 					});
 					if (switchedFallback) {
-						this._retryAttempt = 1;
+						noteFallbackSwitch();
 						if (tier === "tier2-fallback-probe-back") {
 							const selector = this._retryFallback.activeState?.originalSelector ?? "";
 							this._armProbeBackForDemotedSelector(selector, remainingHintMs);
@@ -8768,7 +8812,7 @@ export class AgentSession {
 				});
 				if (switchedFallback) {
 					// The new model receives a fresh retry budget; the failed model does not.
-					this._retryAttempt = 1;
+					noteFallbackSwitch();
 				} else {
 					const exhaustedChainKey = this._retryFallback.exhaustedChainKey;
 					if (exhaustedChainKey) {
@@ -8812,7 +8856,7 @@ export class AgentSession {
 					retryAfterMs: providerDelayMs,
 				});
 				if (switchedFallback) {
-					this._retryAttempt = 1;
+					noteFallbackSwitch();
 				}
 			}
 			if (!switchedFallback) {
@@ -8847,7 +8891,7 @@ export class AgentSession {
 			this._retryRandom(),
 		);
 		const plannedDelayMs =
-			switchedFallback || sameModelNativeRecovery
+			switchedFallback || sameModelNativeRecovery || sameModelPreFallbackRetry
 				? 0
 				: is429TierRouted
 					? (hintTierDelayMs ?? providerDelayMs ?? localExponentialMs)
