@@ -44,6 +44,56 @@ OAR needs one bounded same-model retry after an already-completed account failov
 
 - MEDIUM: the `tryFallback` wrapper, `_retryAttempt` bookkeeping after a successful fallback, and the new `_tryDeferFallbackForSameModelRetry` helper next to `_handleRetryableError` in `agent-session.ts`.
 
+## 2026-09-27 - Model-declared default thinking level (senpi#2196)
+
+### What changed
+
+- `packages/coding-agent/src/core/provider-composer.ts`: `modelFromJson` carries a models.json model's `defaultThinkingLevel` onto the runtime model (the fork-only `model-config-schema.ts` accepts it as one of the seven levels).
+- `packages/coding-agent/src/core/sdk.ts`: startup resolution uses `model.defaultThinkingLevel` after the session entry and the remembered per-model level and before `settings.defaultThinkingLevel` / `medium`; it stays a default without selection provenance and is clamped like any other level.
+- `packages/coding-agent/src/core/agent-session.ts`: `_getThinkingForModelSwitch` applies the same order when switching models.
+- `packages/coding-agent/src/core/model-config.ts`: `ModelConfig.validationError(content, path)` exposes the load-time parse and schema check so `senpi models discover` refuses to replace models.json with content that would not load.
+
+### Why
+
+- An OpenAI-compatible endpoint can declare a model's default effort (`reasoning_efforts[].default`); `senpi models discover` records it, and must validate what it writes with the same rules models.json is loaded with. The global setting tracks the last level picked on any model, so a model's own default is the better starting point for a model the user has not configured.
+
+### Why an extension could not handle it
+
+- Initial and model-switch thinking resolution happen inside session creation and `AgentSession` before any extension hook can change the level without recording it as a user choice.
+
+### Expected merge conflict zones
+
+- `packages/coding-agent/src/core/sdk.ts`: the thinking-level resolution block before `settingsManager.getDefaultThinkingLevel()`.
+- `packages/coding-agent/src/core/agent-session.ts`: `_getThinkingForModelSwitch` before the configured-default branch.
+- `packages/coding-agent/src/core/provider-composer.ts`: the `modelFromJson` object literal after `thinkingLevelMap`.
+- `packages/coding-agent/src/core/model-config.ts`: the static method before `parseAndMigrate`.
+
+## 2026-09-28 - Revert the fallback circuit breaker (#2201) (senpi#2227)
+
+### What changed
+
+- `packages/coding-agent/src/core/agent-session.ts`: restored to its state before #2201 (merge 37b5f23).
+- `packages/coding-agent/src/core/sdk.ts`: restored to its state before #2201 (merge 37b5f23).
+- `packages/coding-agent/src/core/settings-manager.ts`: restored to its state before #2201 (merge 37b5f23).
+- `packages/coding-agent/src/core/retry-fallback/candidates.ts`: restored to its state before #2201 (merge 37b5f23).
+- `packages/coding-agent/src/core/retry-fallback/circuit-probes.ts`: restored to its state before #2201 (merge 37b5f23).
+- `packages/coding-agent/src/core/retry-fallback/circuit.ts`: restored to its state before #2201 (merge 37b5f23).
+- `packages/coding-agent/src/core/retry-fallback/controller-types.ts`: restored to its state before #2201 (merge 37b5f23).
+- `packages/coding-agent/src/core/retry-fallback/controller.ts`: restored to its state before #2201 (merge 37b5f23).
+- `packages/coding-agent/src/core/session-failure-report.ts`: restored to its state before #2201 (merge 37b5f23).
+
+### Why
+
+Since #2201 merged, main CI fails the RPC named pipes (Windows) job deterministically: `test/rpc-host-lifecycle.test.ts` "does not exit while a turn is active even with no connections" loses the host (`connect ENOENT` on the pipe). The job passed on the nine main commits before it and fails on the merge and a rerun. The circuit breaker re-lands with the Windows fix separately.
+
+### Why an extension could not handle it
+
+A revert of core retry, session and settings code; nothing an extension owns.
+
+### Expected merge conflict zones
+
+- The same regions #2201 touched, when the circuit breaker re-lands.
+
 ## 2026-09-27 - Sessions are held against moves by other processes; SessionInfo carries the recorded repository (senpi#2184)
 
 ### What changed

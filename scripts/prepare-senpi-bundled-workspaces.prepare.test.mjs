@@ -42,9 +42,6 @@ const BUNDLED_WORKSPACE_NAMES = [
 	"@earendil-works/pi-tui",
 	"@code-yeongyu/senpi-codemode",
 ];
-// Outside the publish set: staging leaves them out unless something shipped reaches them (senpi#2141).
-const DESKTOP_WORKSPACES = ["desktop-protocol", "desktop-prelude", "desktop-service", "desktop-tool", "desktop-engine"];
-const DESKTOP_WORKSPACE_NAMES = DESKTOP_WORKSPACES.map((workspace) => `@code-yeongyu/senpi-${workspace}`);
 const VENDORED_WORKSPACE_NAMES = ["@earendil-works/pi-client", "@earendil-works/pi-protocol"];
 const ALL_WORKSPACE_NAMES = [...BUNDLED_WORKSPACE_NAMES, ...VENDORED_WORKSPACE_NAMES];
 
@@ -58,7 +55,6 @@ const BUNDLED_WORKSPACE_PACKAGE_NAMES = new Map([
 	["telemetry", "@earendil-works/pi-telemetry"],
 	["tui", "@earendil-works/pi-tui"],
 	["senpi-codemode", "@code-yeongyu/senpi-codemode"],
-	...DESKTOP_WORKSPACES.map((workspace) => [workspace, `@code-yeongyu/senpi-${workspace}`]),
 ]);
 
 function writeCodingAgentManifest(root) {
@@ -75,14 +71,6 @@ function writeCodingAgentManifest(root) {
 function bundledWorkspaceFiles(workspace) {
 	if (workspace === "pty") {
 		return ["package.json", "dist/index.js", "native/index.js", nativePrebuildFile(nativePrebuildTarget(), "@earendil-works/pi-pty")];
-	}
-	if (workspace === "desktop-engine") {
-		return [
-			"package.json",
-			"dist/index.js",
-			"native/index.js",
-			nativePrebuildFile(nativePrebuildTarget(), "@code-yeongyu/senpi-desktop-engine"),
-		];
 	}
 	if (workspace === "senpi-codemode") {
 		return ["package.json", "src/index.ts", "src/kernels/py/prelude.py"];
@@ -148,7 +136,7 @@ describe("prepareSenpiBundledWorkspaces", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "senpi-bundle-workspaces-"));
 		writeShrinkwrap(tempDir, { "": { dependencies: {} } });
 		writeCodingAgentManifest(tempDir);
-		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "pty", "telemetry", "tui", "senpi-codemode", ...DESKTOP_WORKSPACES]) {
+		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "pty", "telemetry", "tui", "senpi-codemode"]) {
 			writeBundledWorkspace(tempDir, workspace);
 		}
 
@@ -173,50 +161,12 @@ describe("prepareSenpiBundledWorkspaces", () => {
 		);
 	});
 
-	it("leaves the never-published desktop workspaces out of the staged tree when nothing shipped reaches them (senpi#2141)", () => {
-		// Given: every workspace is built, and a stale desktop copy is left over from an earlier staging
-		tempDir = mkdtempSync(join(tmpdir(), "senpi-bundle-desktop-left-out-"));
-		writeShrinkwrap(tempDir, { "": { dependencies: {} } });
-		writeCodingAgentManifest(tempDir);
-		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "pty", "telemetry", "tui", "senpi-codemode", ...DESKTOP_WORKSPACES]) {
-			writeBundledWorkspace(tempDir, workspace);
-		}
-		const stagedDesktopRoot = join(tempDir, "packages", "coding-agent", "node_modules", "@code-yeongyu");
-		writeJson(join(stagedDesktopRoot, "senpi-desktop-engine", "package.json"), { name: DESKTOP_WORKSPACE_NAMES[4], version: "stale" });
-
-		// When
-		prepareSenpiBundledWorkspaces(tempDir);
-
-		// Then
-		for (const workspace of DESKTOP_WORKSPACES) {
-			assert.equal(existsSync(join(stagedDesktopRoot, `senpi-${workspace}`)), false, workspace);
-		}
-		const manifest = JSON.parse(readFileSync(join(tempDir, "packages", "coding-agent", "package.json"), "utf8"));
-		assert.deepEqual(Object.keys(manifest.dependencies).filter((name) => name.includes("desktop")), []);
-	});
-
-	it("fails staging when the built dist imports a never-published desktop package (senpi#2141)", () => {
-		// Given: the shipped bundle keeps the desktop engine external
-		tempDir = mkdtempSync(join(tmpdir(), "senpi-bundle-desktop-reached-"));
-		writeShrinkwrap(tempDir, { "": { dependencies: {} } });
-		writeCodingAgentManifest(tempDir);
-		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "pty", "telemetry", "tui", "senpi-codemode", ...DESKTOP_WORKSPACES]) {
-			writeBundledWorkspace(tempDir, workspace);
-		}
-		const bundleFile = join(tempDir, "packages", "coding-agent", "dist", "bundle", "desktop.js");
-		mkdirSync(dirname(bundleFile), { recursive: true });
-		writeFileSync(bundleFile, 'const engine = await import("@code-yeongyu/senpi-desktop-engine");\n');
-
-		// When / Then
-		assert.throws(() => prepareSenpiBundledWorkspaces(tempDir), /never published: @code-yeongyu\/senpi-desktop-engine \(imported by/);
-	});
-
 	it("bundles pty with a pipe-fallback warning when the host prebuild is missing", () => {
 		// Given: every loader-visible file present, but the host native prebuild absent.
 		tempDir = mkdtempSync(join(tmpdir(), "senpi-bundle-missing-pty-prebuild-"));
 		writeShrinkwrap(tempDir, { "": { dependencies: {} } });
 		writeCodingAgentManifest(tempDir);
-		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "telemetry", "tui", "senpi-codemode", ...DESKTOP_WORKSPACES]) {
+		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "telemetry", "tui", "senpi-codemode"]) {
 			writeBundledWorkspace(tempDir, workspace);
 		}
 		writeBundledWorkspace(tempDir, "pty");
@@ -285,7 +235,7 @@ describe("prepareSenpiBundledWorkspaces", () => {
 				{ name: `@earendil-works/${packageName}`, version: "stale" },
 			);
 		}
-		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "pty", "telemetry", "tui", "senpi-codemode", ...DESKTOP_WORKSPACES]) {
+		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "pty", "telemetry", "tui", "senpi-codemode"]) {
 			writeBundledWorkspace(tempDir, workspace);
 		}
 		// Installed copies carry the manifest versions: staging refuses any other version.
@@ -419,7 +369,7 @@ describe("prepareSenpiBundledWorkspaces", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "senpi-vendor-specifier-leak-"));
 		writeShrinkwrap(tempDir, { "": { dependencies: {} } });
 		writeCodingAgentManifest(tempDir);
-		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "pty", "telemetry", "tui", "senpi-codemode", ...DESKTOP_WORKSPACES]) {
+		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "pty", "telemetry", "tui", "senpi-codemode"]) {
 			writeBundledWorkspace(tempDir, workspace);
 		}
 		const leakedImport = join(tempDir, "packages", "coding-agent", "dist", "leak.js");
@@ -436,7 +386,7 @@ describe("prepareSenpiBundledWorkspaces", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "senpi-vendor-runtime-dependency-"));
 		writeShrinkwrap(tempDir, { "": { dependencies: {} } });
 		writeCodingAgentManifest(tempDir);
-		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "pty", "telemetry", "tui", "senpi-codemode", ...DESKTOP_WORKSPACES]) {
+		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "pty", "telemetry", "tui", "senpi-codemode"]) {
 			writeBundledWorkspace(tempDir, workspace);
 		}
 		writeJson(join(tempDir, "packages", "protocol", "package.json"), {
@@ -458,7 +408,7 @@ describe("prepareSenpiBundledWorkspaces", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "senpi-bundle-missing-pty-loader-"));
 		writeShrinkwrap(tempDir, { "": { dependencies: {} } });
 		writeCodingAgentManifest(tempDir);
-		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "telemetry", "tui", ...DESKTOP_WORKSPACES]) {
+		for (const workspace of ["chord", "agent", "ai", "client", "protocol", "telemetry", "tui"]) {
 			writeBundledWorkspace(tempDir, workspace);
 		}
 		writeBundledWorkspace(tempDir, "pty");

@@ -25,6 +25,11 @@ export interface Model<TApi extends Api> {
 	 * use provider defaults. null marks any level as unsupported.
 	 */
 	thinkingLevelMap?: ThinkingLevelMap;
+	/**
+	 * Level to start at when the user has not chosen one for this model, for example the default an
+	 * OpenAI-compatible endpoint advertises. Clamped to the supported levels like any other request.
+	 */
+	defaultThinkingLevel?: ModelThinkingLevel;
 	input: ("text" | "image" | "video")[];
 	cost: ModelCost;
 	contextWindow: number;

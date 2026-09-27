@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { VERSION } from "../../src/config.ts";
 import { processAlive } from "../helpers/spawned-host-reaper.ts";
 import {
+	daemonEnvironmentText,
 	type HostCliSandbox,
 	hostCliSandbox,
 	onlyJsonLine,
@@ -108,6 +109,26 @@ describe.skipIf(process.platform === "win32")("senpi host launch spec trust", ()
 });
 
 describe.skipIf(process.platform === "win32")("senpi host handoff", () => {
+	it("starts one sanitized successor generation", async () => {
+		const qa = await hostCliSandbox("successor-env");
+		const first = onlyJsonLine(await runHostCli(qa, ["ensure", "--json"]));
+
+		const result = await runHostCli(qa, ["handoff", "--json"], {
+			PI_SESSION_ID: "session-2208",
+			PI_SESSION_FILE: "/tmp/session-2208.jsonl",
+			SENPI_PY_KERNEL_PARENT_PID: "2208",
+		});
+
+		expect(result.exitCode).toBe(0);
+		const successor = onlyJsonLine(result);
+		expect(successor).toMatchObject({ action: "handoff", generation: 1, reused: false });
+		expect(successor.pid).not.toBe(first.pid);
+		const environment = daemonEnvironmentText(successor.pid as number);
+		expect(environment).not.toContain("PI_SESSION_ID");
+		expect(environment).not.toContain("PI_SESSION_FILE");
+		expect(environment).not.toContain("SENPI_PY_KERNEL_PARENT_PID");
+	}, 180_000);
+
 	it("refuses against a host that cannot drain, and leaves it running", async () => {
 		const qa = await hostCliSandbox("legacy");
 		const fixturePid = await startFixtureHost(qa, VERSION, NO_HANDOFF_CAPABILITIES);

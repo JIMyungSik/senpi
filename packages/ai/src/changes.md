@@ -1,3 +1,43 @@
+## 2026-09-27 - Endpoint-advertised reasoning efforts (senpi#2196)
+
+### What changed
+
+- `packages/ai/src/index.ts`: re-exports the fork-only `endpoint-reasoning-efforts.ts` (`parseEndpointReasoningEfforts`, `EndpointReasoningEfforts`), which maps the `reasoning_efforts` an OpenAI-compatible `/models` entry advertises onto senpi's thinking levels. The fork-only `model.ts` gains an optional `defaultThinkingLevel`.
+- `packages/ai/src/api/openai-completions.ts`: `streamSimple` keeps the `gpt-6-astra` off -> low fallback only when the model's thinking map has no string `off` value; an explicitly mapped off value (such as an endpoint-advertised `none`) is sent when reasoning is off.
+
+### Why
+
+- OpenAI-compatible endpoints advertise which effort values each model accepts and which one is the default; the coding-agent's `senpi models discover` turns that into a model's `thinkingLevelMap` and `defaultThinkingLevel` (prior art: gajae-code #5979).
+- The Astra fallback turned an advertised `none` into `low`, enabling reasoning the endpoint was asked to disable.
+
+### Why an extension could not handle it
+
+- The mapper is a pure function of the package's own `ThinkingLevelMap` contract and belongs beside it so every consumer maps the same way; the barrel is the package's public entry. The off normalization happens inside the adapter while it builds the request, after any extension hook could influence the level.
+
+### Expected merge conflict zones
+
+- `packages/ai/src/index.ts`: the alphabetical `export *` block before `./env-api-keys.ts`.
+- `packages/ai/src/api/openai-completions.ts`: the `normalizedReasoning` computation in `streamSimple`.
+
+## 2026-09-28 - Revert the fallback circuit breaker (#2201) (senpi#2227)
+
+### What changed
+
+- `packages/ai/src/utils/error-body.ts`: restored to its state before #2201 (merge 37b5f23).
+- `packages/ai/src/utils/retry.ts`: restored to its state before #2201 (merge 37b5f23).
+
+### Why
+
+Since #2201 merged, main CI fails the RPC named pipes (Windows) job deterministically: `test/rpc-host-lifecycle.test.ts` "does not exit while a turn is active even with no connections" loses the host (`connect ENOENT` on the pipe). The job passed on the nine main commits before it and fails on the merge and a rerun. The circuit breaker re-lands with the Windows fix separately.
+
+### Why an extension could not handle it
+
+A revert of core retry, session and settings code; nothing an extension owns.
+
+### Expected merge conflict zones
+
+- The same regions #2201 touched, when the circuit breaker re-lands.
+
 ## 2026-09-24 - Forced tool_choice refused under thinking falls back instead of failing (senpi#2121)
 
 ### What changed
@@ -4932,3 +4972,35 @@ TextContent and pi-messages request construction.
 - LOW: the prompt-cache export block in `index.ts`.
 
 - Covered production paths: `packages/ai/src/utils/prompt-cache-ttl.ts`, `packages/ai/src/index.ts`.
+
+## 2026-09-27 — Structured providerDiagnostic on failed provider turns (#2197)
+
+### What changed
+
+- `packages/ai/src/types.ts`: `AssistantMessage` gains the optional `providerDiagnostic?: ProviderDiagnostic` field.
+- `packages/ai/src/api/anthropic-messages.ts`: the two `client.beta.messages.create(...).asResponse()` awaits run through `awaitProviderTransport(..., anthropicProviderDiagnosticFromError)`, the `event: error` SSE throw attaches `anthropicProviderDiagnosticFromSseData(sse.data)` to the same `Error(errorText)`, and the catch copies `readProviderDiagnostic(error)` onto `output.providerDiagnostic` for `stopReason: "error"` only. `errorMessage` and the `provider_retry_failure` diagnostic are byte-identical.
+- `packages/ai/src/api/openai-completions.ts`: `createStream` awaits the SDK call through `awaitProviderTransport` and wraps the SDK stream in `iterateProviderTransport` (both with `openAICompatibleProviderDiagnosticFromError`), so HTTP rejections and in-stream error chunks carry a diagnostic; the catch copies it like the Anthropic adapter. `errorMessage` formatting is unchanged.
+- `packages/ai/src/index.ts`: re-exports `./provider-diagnostic.ts` (`ProviderDiagnostic` types, `PROVIDER_DIAGNOSTIC_MAX_BYTES`, `sanitizeProviderDiagnostic`, `readProviderDiagnostic`).
+- Fork-only modules: `src/provider-diagnostic.ts`, `src/utils/provider-diagnostic-vocabulary.ts` (closed token allowlist, status compatibility, 512-byte builder), `src/utils/provider-diagnostic-carrier.ts` (WeakMap side channel on thrown errors), `src/utils/provider-diagnostic-sources.ts` (per-adapter readers and the transport seam wrappers).
+
+### Why
+
+- SDK/RPC consumers could only tell an auth failure from a rate limit, quota exhaustion, a context overflow or an outage by regex over `errorMessage`. The diagnostic is minted where the structured evidence still exists (the SDK error its own transport call raised, the SSE envelope before it becomes an Error message), never from message text, headers or request ids, and never from errors raised by caller callbacks such as `onPayload`. Prior art: gajae-code #6017.
+
+### Why an extension could not handle it
+
+- The structured status and error code are gone once the adapter reduces the failure to `errorMessage`; only the adapter's own transport seam can observe them, and extensions see the already-collapsed message.
+
+### Expected merge conflict zones
+
+- MEDIUM: `createRequest` in `anthropic-messages.ts` (the `send` wrapper around `client.beta.messages.create`) and the stream catch block; `createStream` and the catch block in `openai-completions.ts`.
+- LOW: the `event: error` branch of `iterateAnthropicEvents`; the `AssistantMessage` interface in `types.ts`; the export block in `index.ts`.
+
+- Covered production paths: `packages/ai/src/types.ts`, `packages/ai/src/api/anthropic-messages.ts`, `packages/ai/src/api/openai-completions.ts`, `packages/ai/src/index.ts`.
+
+### Review round 2: retry-delay boundary
+
+- `packages/ai/src/utils/provider-retry.ts`: `validateServerRetryDelayMs` receives the provider error itself instead of only its message and re-attaches the diagnostic already minted on it (`peekProviderDiagnostic` → `attachProviderDiagnostic`) to the `ProviderRetryDelayError` it throws when the server's requested delay exceeds `maxRetryDelayMs`. Without this the replacement error dropped the diagnostic on both adapters. The message text, `retryAfterMs`, the delay limit and the retry decision are unchanged; nothing is classified from the text or the headers.
+- Expected merge conflict zones: LOW, the `validateServerRetryDelayMs` signature and its single call site in `getRetryDelayMs`.
+
+- Covered production paths: `packages/ai/src/utils/provider-retry.ts`.

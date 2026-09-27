@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       native_package_dir:
-        description: 'Directory containing the native package Cargo.toml and package.json (every row also builds the senpi-desktop-engine binary from crates/senpi-desktop-engine)'
+        description: 'Directory containing the native package Cargo.toml and package.json'
         required: false
         type: string
         default: crates/senpi-pty
@@ -16,10 +16,8 @@ on:
       - 'Cargo.lock'
       - 'crates/senpi-pty/**'
       - 'crates/senpi-grep/**'
-      - 'crates/senpi-desktop-*/**'
       - 'packages/pty/**'
       - 'packages/coding-agent/native/**'
-      - 'packages/desktop-*/**'
       - 'scripts/probe-native-grep*.mjs'
       - 'scripts/ci/**'
   push:
@@ -30,10 +28,8 @@ on:
       - 'Cargo.lock'
       - 'crates/senpi-pty/**'
       - 'crates/senpi-grep/**'
-      - 'crates/senpi-desktop-*/**'
       - 'packages/pty/**'
       - 'packages/coding-agent/native/**'
-      - 'packages/desktop-*/**'
       - 'scripts/probe-native-grep*.mjs'
       - 'scripts/ci/**'
 
@@ -153,12 +149,6 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      # Gates the Windows desktop QA job: SendInput and UI Automation need an interactive desktop.
-      - name: Windows interactive-desktop smoke
-        if: ${{ matrix.artifact == 'native-prebuild-win32-x64' }}
-        shell: powershell
-        run: ./scripts/ci/windows-interactive-desktop-smoke.ps1
-
       - name: Setup Rust target
         run: |
           set -euo pipefail
@@ -171,7 +161,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          key: native-desktop-${{ matrix.rust_target }}
+          key: native-${{ matrix.rust_target }}
 
       - name: Setup Zig and cargo-zigbuild
         if: ${{ matrix.linux }}
@@ -209,7 +199,6 @@ jobs:
 
           cargo test -p senpi-pty --target "${RUST_TARGET}" --locked
           cargo test -p senpi-grep --target "${RUST_TARGET}" --locked
-          cargo test -p senpi-desktop-core -p senpi-desktop-safety -p senpi-desktop-session -p senpi-desktop-backend-fake -p senpi-desktop-engine --target "${RUST_TARGET}" --locked
 
       - name: Rust manual PTY QA
         if: ${{ !matrix.cross_compile }}
@@ -263,28 +252,6 @@ jobs:
 
             npm exec --yes --package "@napi-rs/cli@${NAPI_CLI_VERSION}" -- napi "${args[@]}" -- --locked
           done
-
-      - name: Build desktop engine
-        run: |
-          set -euo pipefail
-
-          output_dir="${RUNNER_TEMP}/native-prebuild-output"
-          # Zig is installed only on the Linux rows; darwin-x64 and win32-arm64 cross with the Rust target toolchain.
-          if [[ "${LINUX_ROW}" == "true" ]]; then
-            cargo zigbuild --release -p senpi-desktop-engine --target "${NAPI_TARGET}" --locked
-            # cargo-zigbuild strips the glibc-version suffix (".2.17") from the output directory.
-            release_dir="target/${NAPI_TARGET%%.*}/release"
-          else
-            cargo build --release -p senpi-desktop-engine --target "${RUST_TARGET}" --locked
-            release_dir="target/${RUST_TARGET}/release"
-          fi
-
-          engine_name="senpi-desktop-engine"
-          if [[ "${NODE_PLATFORM}" == "win32" ]]; then
-            engine_name="senpi-desktop-engine.exe"
-          fi
-          mkdir -p "${output_dir}"
-          cp "${release_dir}/${engine_name}" "${output_dir}/${engine_name}"
 
       - name: Node native load and lifecycle probe
         if: ${{ !matrix.cross_compile }}
@@ -348,20 +315,8 @@ jobs:
             exit 1
           fi
 
-          engine_files=()
-          while IFS= read -r engine_file; do
-            engine_files+=("${engine_file}")
-          done < <(find "${output_dir}" -type f -name 'senpi-desktop-engine*' | sort)
-          if [[ "${#engine_files[@]}" -ne 1 ]]; then
-            echo "::error::expected exactly one senpi-desktop-engine* file for ${NAPI_TARGET}, found ${#engine_files[@]}"
-            find "${output_dir}" -type f | sort
-            exit 1
-          fi
-          engine_file="${engine_files[0]}"
-
           cp "${pty_file}" "${artifact_dir}/"
           cp "${grep_file}" "${artifact_dir}/"
-          cp "${engine_file}" "${artifact_dir}/"
           {
             echo "artifact=${{ matrix.artifact }}"
             echo "napi_target=${NAPI_TARGET}"
@@ -370,18 +325,7 @@ jobs:
             echo "node_arch=${NODE_ARCH}"
             echo "file_senpi_pty=$(basename "${pty_file}")"
             echo "file_senpi_grep=$(basename "${grep_file}")"
-            echo "file_senpi_desktop_engine=$(basename "${engine_file}")"
           } > "${artifact_dir}/manifest.txt"
-
-      - name: Desktop engine lifecycle probe
-        if: ${{ !matrix.cross_compile }}
-        run: |
-          set -euo pipefail
-
-          artifact_dir="${RUNNER_TEMP}/native-prebuild-artifact"
-          engine_file="$(sed -n 's/^file_senpi_desktop_engine=//p' "${artifact_dir}/manifest.txt")"
-          node scripts/ci/probe-desktop-engine.mjs "${artifact_dir}/${engine_file}" \
-            crates/senpi-desktop-backend-fake/fixtures/two-displays-one-window.json
 
       - name: Upload native prebuild
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

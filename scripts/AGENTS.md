@@ -81,8 +81,8 @@ parse `## YYYY-MM-DD` and `## Title (YYYY-MM-DD)` dialects.
 
 Embeds workspace packages in the published `@code-yeongyu/senpi` tarball. `sourceOnly: false`
 ships `dist/index.js` (build before staging); `sourceOnly: true` ships `src/` (only
-`senpi-codemode`). Every `requiredFiles` entry is validated; `@earendil-works/pi-pty` and
-`@code-yeongyu/senpi-desktop-engine` also require `native/index.js` and a platform prebuild
+`senpi-codemode`). Every `requiredFiles` entry is validated; `@earendil-works/pi-pty` also
+requires `native/index.js` and a platform prebuild
 (`nativePrebuildFile(target, packageName)` names it per package). The tarball is fully self-contained: `copyPublishDependencies` (delegating to
 `prepare-senpi-publish-dependencies.mjs`) stages the ENTIRE runtime closure from
 `publish-deps.lock.json` into `packages/coding-agent/node_modules` so the staged tree mirrors that

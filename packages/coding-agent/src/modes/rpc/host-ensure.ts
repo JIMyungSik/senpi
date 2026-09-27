@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { ENV_AGENT_DIR, getAgentDir } from "../../config.ts";
+import { getAgentDir } from "../../config.ts";
 import { engineBuildIdentity } from "../../core/engine-build-identity.ts";
 import {
 	type DaemonPidFile,
@@ -13,13 +13,7 @@ import {
 	readProcessStartTime,
 	waitForStartTime,
 } from "../app-server/daemon/process.ts";
-import { RPC_CLIENT_CAPABILITIES_ENV } from "./custom-capability.ts";
-import {
-	createDaemonDirectories,
-	createHostDaemonPaths,
-	HOST_DAEMON_DIR_ENV,
-	type HostDaemonPaths,
-} from "./host-daemon-paths.ts";
+import { createDaemonDirectories, createHostDaemonPaths, type HostDaemonPaths } from "./host-daemon-paths.ts";
 import {
 	clearHostRegistration,
 	legacyHostIsLive,
@@ -42,8 +36,10 @@ import { handoffHost } from "./host-handoff.ts";
 import { defaultHostLaunch, PINNED_HOST_CLIENT_CAPABILITIES } from "./host-launch.ts";
 import { DEFAULT_HOST_IDLE_EXIT_MS, type HostColdStart, type HostLifecyclePolicyInput } from "./host-lifecycle.ts";
 import { probeProtocolInfo, probeSocketReachable } from "./host-probe.ts";
+import { isHostGenerationProcess } from "./host-process-role.ts";
+import { initialHostEnvironment } from "./host-spawn-environment.ts";
 import { acquireOwnershipSafeLock } from "./ownership-safe-lock.ts";
-import { HOST_GENERATION_ENV, HOST_INSTANCE_ID_ENV, hostLaunchProfile } from "./protocol-identity.ts";
+import { hostLaunchProfile } from "./protocol-identity.ts";
 import { statSocketIdentity } from "./socket-ownership.ts";
 import { createSocketSecret, resolveSocketTransportAddress, socketSecretPath } from "./socket-transport.ts";
 
@@ -243,7 +239,7 @@ function decide(
 	startedByUs: boolean,
 	protocol: HostProtocolInfo | undefined,
 ): Exclude<HostDecision, { action: "fallback" }> {
-	if (options.upgrade !== "if-engine-differs") {
+	if (options.upgrade !== "if-engine-differs" || isHostGenerationProcess()) {
 		return decideHostAction(ensureClient(options, startedByUs), protocol, "never");
 	}
 	const decision = decideHostAction(ensureClient(options, startedByUs), protocol, "upgrade");
@@ -344,7 +340,13 @@ async function startHost(
 		child = spawn(launch.command, [...launch.args], {
 			detached: true,
 			windowsHide: true,
-			env: hostEnv(options, { paths, instanceId, generation }),
+			env: initialHostEnvironment({
+				agentDir: options.agentDir,
+				env: options.env,
+				paths,
+				instanceId,
+				generation,
+			}),
 			stdio: ["ignore", "ignore", stderr.fd],
 		});
 		childExit = new Promise((resolveExit) => {
@@ -596,27 +598,6 @@ function isChildExit(value: HostProtocolInfo | ChildExit | undefined): value is 
  */
 function isCompatible(protocol: HostProtocolInfo | undefined): boolean {
 	return decideHostAction(ensureClient({ socket: "" }, false), protocol, "never").action === "reuse";
-}
-
-/** The environment a spawned host inherits: this process's, the caller's overrides, then the fixed wiring. */
-function hostEnv(
-	options: EnsureHostOptions,
-	generation: { readonly paths: HostDaemonPaths; readonly instanceId: string; readonly generation: number },
-): NodeJS.ProcessEnv {
-	const env: NodeJS.ProcessEnv = { ...process.env };
-	for (const [key, value] of Object.entries(options.env ?? {})) {
-		if (value === null) delete env[key];
-		else env[key] = value;
-	}
-	env[ENV_AGENT_DIR] = options.agentDir ?? getAgentDir();
-	env[RPC_CLIENT_CAPABILITIES_ENV] = PINNED_HOST_CLIENT_CAPABILITIES.join(",");
-	// Always SET, never inherited: an ensure run from inside a daemon session would otherwise hand
-	// its own host's identity to the one it spawns, and two hosts claiming one instance id make a
-	// handoff - which completes exactly when the instance id changes - impossible to observe.
-	env[HOST_INSTANCE_ID_ENV] = generation.instanceId;
-	env[HOST_GENERATION_ENV] = String(generation.generation);
-	env[HOST_DAEMON_DIR_ENV] = generation.paths.dir;
-	return env;
 }
 
 async function reapOrphanedInternalHostDirs(): Promise<void> {

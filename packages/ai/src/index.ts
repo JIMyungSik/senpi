@@ -92,12 +92,14 @@ export {
 	renderCursorCliModelString,
 	resolveCursorSelectionDescriptor,
 } from "./cursor/selection-descriptor.ts";
+export * from "./endpoint-reasoning-efforts.ts";
 export * from "./env-api-keys.ts";
 export * from "./images-models.ts";
 export * from "./legacy-provider-ids.ts";
 export * from "./models.ts";
 export * from "./models-store.ts";
 export { supportsAllowedToolChoice } from "./openai-responses-compat.ts";
+export * from "./provider-diagnostic.ts";
 export * from "./providers/faux.ts";
 export * from "./session-resources.ts";
 export {

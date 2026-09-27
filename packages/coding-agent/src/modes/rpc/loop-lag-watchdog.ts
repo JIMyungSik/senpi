@@ -21,6 +21,16 @@ export interface LoopLagWatchdogOptions {
 	readonly log?: (message: string) => void;
 	readonly now?: () => number;
 	readonly env?: Readonly<Record<string, string | undefined>>;
+	/** Process CPU time in microseconds; defaults to `process.cpuUsage()`. */
+	readonly cpuUsage?: () => { readonly user: number; readonly system: number };
+	/** Live JS heap in bytes; defaults to `process.memoryUsage().heapUsed`. */
+	readonly heapUsed?: () => number;
+}
+
+const BYTES_PER_MB = 1024 * 1024;
+
+function describeWindow(processCpuMs: number, heapDeltaMb: number): string {
+	return `cpu=${processCpuMs}ms heap=${heapDeltaMb >= 0 ? "+" : ""}${heapDeltaMb}MB`;
 }
 
 function describeAttribution(attribution: SessionAttribution | undefined): string {
@@ -38,6 +48,11 @@ function describeAttribution(attribution: SessionAttribution | undefined): strin
  * and tool whose work held the loop; past the error threshold it also emits a
  * `host_stalled` lifecycle record so attached clients (and the desktop) can show it.
  *
+ * Every stall also carries the process CPU time and the heap movement of the stalled
+ * window, so it explains itself (senpi#2211): CPU near the drift means the host was busy
+ * (a heap drop in the same window points at a collection); CPU near zero means the
+ * process did not run - the machine starved it or it sat in a blocking wait.
+ *
  * The watchdog only reports. It never aborts a turn, kills a session, or refuses work.
  */
 export class LoopLagWatchdog {
@@ -50,12 +65,18 @@ export class LoopLagWatchdog {
 	private expectedTickAt: number | undefined;
 	private activityMark = 0;
 	private lastWarnAt: number | undefined;
+	private readonly cpuUsage: () => { readonly user: number; readonly system: number };
+	private readonly heapUsed: () => number;
+	private cpuMicrosAtTick = 0;
+	private heapBytesAtTick = 0;
 
 	constructor(options: LoopLagWatchdogOptions) {
 		const env = options.env ?? process.env;
 		this.emit = options.emit;
 		this.log = options.log ?? ((message) => void process.stderr.write(message));
 		this.now = options.now ?? Date.now;
+		this.cpuUsage = options.cpuUsage ?? (() => process.cpuUsage());
+		this.heapUsed = options.heapUsed ?? (() => process.memoryUsage().heapUsed);
 		this.warnMs = parseIdleExitMs(env[LOOP_LAG_WARN_MS_ENV]) ?? DEFAULT_LOOP_LAG_WARN_MS;
 		this.errorMs = parseIdleExitMs(env[LOOP_LAG_ERROR_MS_ENV]) ?? DEFAULT_LOOP_LAG_ERROR_MS;
 	}
@@ -64,6 +85,9 @@ export class LoopLagWatchdog {
 		if (this.timer !== undefined) return;
 		this.expectedTickAt = this.now() + LOOP_LAG_TICK_MS;
 		this.activityMark = sessionActivityMark();
+		const cpu = this.cpuUsage();
+		this.cpuMicrosAtTick = cpu.user + cpu.system;
+		this.heapBytesAtTick = this.heapUsed();
 		// Unref'd: watching the loop must never be the reason the host stays alive.
 		this.timer = setInterval(() => this.tick(), LOOP_LAG_TICK_MS);
 		this.timer.unref?.();
@@ -86,14 +110,32 @@ export class LoopLagWatchdog {
 		const previousMark = this.activityMark;
 		this.expectedTickAt = now + LOOP_LAG_TICK_MS;
 		this.activityMark = sessionActivityMark();
+		const cpu = this.cpuUsage();
+		const cpuMicros = cpu.user + cpu.system;
+		const heapBytes = this.heapUsed();
+		const previousCpuMicros = this.cpuMicrosAtTick;
+		const previousHeapBytes = this.heapBytesAtTick;
+		this.cpuMicrosAtTick = cpuMicros;
+		this.heapBytesAtTick = heapBytes;
 		const driftMs = Math.round(now - expectedAt);
 		recordLoopBlockedMs(driftMs);
 		if (driftMs <= this.warnMs) return;
 		const attribution = sessionActivitySince(previousMark);
+		const processCpuMs = Math.round((cpuMicros - previousCpuMicros) / 1000);
+		const heapDeltaMb = Math.round((heapBytes - previousHeapBytes) / BYTES_PER_MB);
 		if (driftMs > this.errorMs)
-			this.emit({ type: "host_stalled", driftMs, sessionId: attribution?.sessionId, tool: attribution?.tool });
+			this.emit({
+				type: "host_stalled",
+				driftMs,
+				sessionId: attribution?.sessionId,
+				tool: attribution?.tool,
+				processCpuMs,
+				heapDeltaMb,
+			});
 		if (this.lastWarnAt !== undefined && now - this.lastWarnAt < LOOP_LAG_WARN_INTERVAL_MS) return;
 		this.lastWarnAt = now;
-		this.log(`senpi rpc host stall: event loop blocked ${driftMs}ms (${describeAttribution(attribution)})\n`);
+		this.log(
+			`senpi rpc host stall: event loop blocked ${driftMs}ms (${describeAttribution(attribution)}; ${describeWindow(processCpuMs, heapDeltaMb)})\n`,
+		);
 	}
 }

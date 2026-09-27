@@ -26,22 +26,12 @@ const SUPPORTED_PMS = new Set(SUPPORTED_PACKAGE_MANAGERS);
 // and coding-agent's experimental graph all import `@earendil-works/chord`), and `tsgo -p
 // tsconfig.build.json` resolves it through `../chord/dist/*.d.ts`. It therefore has to finish
 // before any dependent phase starts.
-// The desktop packages ride the same phases along their own chain: -protocol and -prelude are
-// leaves, -engine imports -protocol, -service imports -engine, and -tool imports -service; all of
-// them finish before coding-agent, which imports -tool and -service.
 export const BUILD_PHASES = [
 	["packages/chord"],
-	[
-		"packages/tui",
-		"packages/pty",
-		"packages/telemetry",
-		"packages/protocol",
-		"packages/desktop-protocol",
-		"packages/desktop-prelude",
-	],
-	["packages/ai", "packages/client", "packages/desktop-engine"],
-	["packages/agent", "packages/desktop-service"],
-	["packages/session-backends/sqlite-node", "packages/desktop-tool"],
+	["packages/tui", "packages/pty", "packages/telemetry", "packages/protocol"],
+	["packages/ai", "packages/client"],
+	["packages/agent"],
+	["packages/session-backends/sqlite-node"],
 	["packages/coding-agent"],
 	["packages/server"],
 ];

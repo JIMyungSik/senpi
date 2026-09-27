@@ -12,6 +12,32 @@
 
 ### Removed
 
+## [2026.9.27-4] - 2026-09-27
+
+### Breaking Changes
+
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [2026.9.27-3] - 2026-09-27
+
+### Breaking Changes
+
+### Added
+
+- `AgentState.providerDiagnostic` mirrors the structured provider failure family of the turn that set `errorMessage`, and terminal failure messages synthesized from a thrown provider error keep the diagnostic its adapter attached. ([#2197](https://github.com/code-yeongyu/senpi/issues/2197))
+
+### Changed
+
+### Fixed
+
+### Removed
+
 ## [2026.9.27-2] - 2026-09-27
 
 ### Breaking Changes

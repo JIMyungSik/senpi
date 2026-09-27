@@ -14,10 +14,8 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { open } from "node:fs/promises";
-import { ENV_AGENT_DIR } from "../../config.ts";
 import { waitForStartTime } from "../app-server/daemon/process.ts";
-import { RPC_CLIENT_CAPABILITIES_ENV } from "./custom-capability.ts";
-import { HOST_DAEMON_DIR_ENV, type HostDaemonPaths } from "./host-daemon-paths.ts";
+import type { HostDaemonPaths } from "./host-daemon-paths.ts";
 import { writeHostRegistration } from "./host-daemon-registration.ts";
 import { readHostSettings, writeHostSettings } from "./host-daemon-state.ts";
 import type { HandoffHostOptions, HandoffRefusal, HandoffResult } from "./host-handoff.ts";
@@ -25,8 +23,9 @@ import { defaultHostLaunch, PINNED_HOST_CLIENT_CAPABILITIES } from "./host-launc
 import { DEFAULT_HOST_IDLE_EXIT_MS } from "./host-lifecycle.ts";
 import { probeProtocolInfo } from "./host-probe.ts";
 import type { HostProtocolInfo } from "./host-protocol-info.ts";
+import { successorHostEnvironment } from "./host-spawn-environment.ts";
 import { signalGeneration } from "./host-stop.ts";
-import { HOST_GENERATION_ENV, HOST_INSTANCE_ID_ENV, hostLaunchProfile } from "./protocol-identity.ts";
+import { hostLaunchProfile } from "./protocol-identity.ts";
 import {
 	generationBindPath,
 	MAX_SOCKET_PATH_BYTES,
@@ -80,7 +79,13 @@ export async function startSuccessor(context: {
 	const child = spawn(launch.command, [...launch.args], {
 		detached: true,
 		windowsHide: true,
-		env: successorEnv(options, { paths, generation, instanceId }),
+		env: successorHostEnvironment({
+			agentDir: options.agentDir,
+			env: options.env,
+			paths,
+			generation,
+			instanceId,
+		}),
 		stdio: ["ignore", "ignore", stderr.fd],
 	});
 	await stderr.close();
@@ -163,27 +168,6 @@ async function abortReason(socket: string, replaced: SocketFileIdentity): Promis
 	return current === undefined || current.dev !== replaced.dev || current.ino !== replaced.ino
 		? "socket_replaced"
 		: "successor_unavailable";
-}
-
-function successorEnv(
-	options: HandoffHostOptions,
-	successor: { readonly paths: HostDaemonPaths; readonly generation: number; readonly instanceId: string },
-): NodeJS.ProcessEnv {
-	const env: NodeJS.ProcessEnv = {
-		...process.env,
-		[HOST_GENERATION_ENV]: String(successor.generation),
-		// Always SET, never inherited: a handoff completes exactly when the instance id on the socket
-		// changes, so a successor that inherited the predecessor's id could never be seen to arrive.
-		[HOST_INSTANCE_ID_ENV]: successor.instanceId,
-		[HOST_DAEMON_DIR_ENV]: successor.paths.dir,
-		[RPC_CLIENT_CAPABILITIES_ENV]: PINNED_HOST_CLIENT_CAPABILITIES.join(","),
-		...(options.agentDir ? { [ENV_AGENT_DIR]: options.agentDir } : {}),
-	};
-	for (const [key, value] of Object.entries(options.env ?? {})) {
-		if (value === null) delete env[key];
-		else env[key] = value;
-	}
-	return env;
 }
 
 function delay(ms: number): Promise<void> {

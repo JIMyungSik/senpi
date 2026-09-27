@@ -15,7 +15,7 @@ export const UPSTREAM_PIN_PATH = ".github/upstream.json";
 
 const RELEASE_MANAGED_PACKAGES = ["ai", "agent", "coding-agent", "tui", "pty", "senpi-codemode"];
 const RUNTIME_SOURCE_PATTERN = new RegExp(`^packages/(?:${RELEASE_MANAGED_PACKAGES.join("|")})/src/`);
-const CRATES_SOURCE_PATTERN = /^crates\/senpi-(?:pty|desktop-[^/]+)\//;
+const CRATES_SOURCE_PATTERN = /^crates\/senpi-pty\//;
 const GENERATED_FILE_PATTERN = /\.generated\.[cm]?[jt]sx?$/;
 const TRACKER_PATTERN = /(^|\/)changes\.md$/i;
 const TEST_TREE_PATTERN = /(^|\/)(__tests__|tests?|fixtures?|examples|docs?)\//;

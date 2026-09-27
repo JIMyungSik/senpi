@@ -16,7 +16,7 @@ import { readdir, rm } from "node:fs/promises";
 import { processIsLive } from "../app-server/daemon/process.ts";
 import { generationPaths, type HostDaemonPaths } from "./host-daemon-paths.ts";
 import { parseJson, readFileOrUndefined } from "./host-daemon-state.ts";
-import { readHostProcessMetrics } from "./host-process-metrics.ts";
+import { type HostProcessMetrics, readHostProcessMetrics } from "./host-process-metrics.ts";
 import { claimOwnerIsLive, readSessionPathClaims } from "./host-reservations.ts";
 
 /** One generation that is still running, as the daemon directory and the OS describe it. */
@@ -27,6 +27,8 @@ export interface HostGenerationRow {
 	readonly engineVersion: string | null;
 	/** Resident memory of that generation's process tree, `null` where the platform hides it. */
 	readonly rss_mb: number | null;
+	/** Resident memory of that generation's own supervisor and host processes, without their tools. */
+	readonly host_rss_mb: number | null;
 	/** Session files this generation still claims in `reservations/`. */
 	readonly sessions: number;
 	/** True for the generation the pointer names: the one serving the socket. */
@@ -75,6 +77,10 @@ export async function pruneDeadGenerations(paths: HostDaemonPaths): Promise<Prun
  * Every generation of this daemon that is still running, newest ordinal last. A record naming a
  * dead pid is omitted rather than reported as history: `host status` answers who is alive now.
  */
+function memoryOf(metrics: HostProcessMetrics): Pick<HostGenerationRow, "rss_mb" | "host_rss_mb"> {
+	return { rss_mb: metrics.rss_mb, host_rss_mb: metrics.host_rss_mb };
+}
+
 export async function readGenerationRows(paths: HostDaemonPaths): Promise<readonly HostGenerationRow[]> {
 	const pointer = parseJson(await readFileOrUndefined(paths.pointerFile).catch(() => undefined));
 	const currentId = typeof pointer?.instance_id === "string" ? pointer.instance_id : undefined;
@@ -88,7 +94,7 @@ export async function readGenerationRows(paths: HostDaemonPaths): Promise<readon
 			generation: typeof record.generation === "number" ? record.generation : 0,
 			pid: record.pid,
 			engineVersion: typeof record.engineVersion === "string" ? record.engineVersion : null,
-			rss_mb: (await readHostProcessMetrics(record.pid)).rss_mb,
+			...memoryOf(await readHostProcessMetrics(record.pid)),
 			sessions: claims.filter((claim) => claim.owner.instanceId === instanceId).length,
 			current: instanceId === currentId,
 			alive: true,

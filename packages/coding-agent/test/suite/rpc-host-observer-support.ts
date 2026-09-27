@@ -42,7 +42,6 @@ export function unknownSessionRegistry(onCommand: () => void): RouterRegistry {
 		closeMarked: async () => {},
 		list: () => [],
 		size: 0,
-		setWorkerAdmission: () => {},
 	};
 }
 
@@ -85,6 +84,5 @@ export function evictionRegistry(entry: RpcSessionEntry, sessionId = "rpc-1"): R
 						},
 					],
 		size: 1,
-		setWorkerAdmission: () => {},
 	};
 }

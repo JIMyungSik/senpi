@@ -6,7 +6,7 @@
  */
 
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Model, ThinkingSelection } from "@earendil-works/pi-ai";
+import type { ImageContent, Model, ProviderDiagnostic, ThinkingSelection } from "@earendil-works/pi-ai";
 import type { SessionRuntimeKind } from "../../cli/args.ts";
 import type { AgentAbortSource } from "../../core/agent-abort-provenance.ts";
 import type { PromptDisposition, SessionStats } from "../../core/agent-session.ts";
@@ -234,9 +234,9 @@ export const RPC_ERROR_INVALID_SESSION_ID = "invalid_session_id";
  */
 export const RPC_ERROR_SESSION_ID_IN_USE = "session_id_in_use";
 /**
- * The host is above its RSS refuse watermark and declined to create a NEW worker session;
- * `errorData { rssMb, retry_after_ms }` says when to ask again. Existing sessions, attaches
- * to a live path and interactive opens are never refused for memory.
+ * Sent only by hosts released before senpi#2207, which declined NEW worker sessions above an RSS
+ * watermark with `errorData { rssMb, retry_after_ms }`. Current hosts never refuse an open for
+ * memory; clients keep recognizing the code while older generations may still answer.
  */
 export const RPC_ERROR_HOST_MEMORY_PRESSURE = "host_memory_pressure";
 // Message-edit and tree-navigation failures (mirror AssistantEditError.code / UserEditError.code /
@@ -442,6 +442,11 @@ export interface RpcSessionState {
 	 * fall back to generic wording instead of "Operation aborted".
 	 */
 	lastAbortSource?: AgentAbortSource;
+	/**
+	 * Structured provider failure family of the most recent failed assistant turn, when its
+	 * provider adapter supplied one (same lifetime as the agent's `errorMessage`).
+	 */
+	lastProviderDiagnostic?: ProviderDiagnostic;
 	/** Service tier the session resolved for the active model, if any. */
 	serviceTier?: ServiceTier;
 	/** True when the active model is served at the priority ("fast") tier. */
@@ -1088,6 +1093,8 @@ export type RpcSessionParkedEvent = {
  *   in-place identity event; this reason is for a handle that ended because of a replacement).
  * - `handoff_parked`: a generation handoff drained this host and put the session back on disk.
  *   The session was not ended - `open_session { sessionPath }` reopens it in the new generation.
+ * - `session_dir_removed`: no client held the session and its transcript directory was deleted,
+ *   so it could never persist again; the sweep ended it instead of letting it outlive its file.
  * - `error`: the session failed (worker death, output overflow) and the host sealed it.
  */
 export type RpcSessionClosedReason =
@@ -1096,6 +1103,7 @@ export type RpcSessionClosedReason =
 	| "host_shutdown"
 	| "replaced"
 	| "handoff_parked"
+	| "session_dir_removed"
 	| "error";
 
 /** Terminal record of a closed routing handle. `reason` is absent on older hosts and older records. */
@@ -1161,6 +1169,13 @@ export interface RpcHostStalledEvent {
 	sessionId?: string;
 	/** Tool that session was executing, when the stall happened inside one. */
 	tool?: string;
+	/**
+	 * Process CPU time spent during the stalled window, in milliseconds. Near `driftMs`: the host
+	 * was busy (JS work or a collection). Near zero: the process did not run (starved or waiting).
+	 */
+	processCpuMs?: number;
+	/** JS heap change across the stalled window, in megabytes; a large drop means a collection ran. */
+	heapDeltaMb?: number;
 }
 
 /**

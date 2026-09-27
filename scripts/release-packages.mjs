@@ -22,16 +22,8 @@ export const WORKSPACE_PACKAGES = [
 // fetching upstream registry metadata) so the closure matches the bundled copy; they are exempt
 // from the lockstep version check because their version is not the fork CalVer. chord is here
 // because it is byte-for-byte upstream apart from packaging metadata, so it keeps `@earendil-works/chord`'s
-// own published identity instead of a fork alias (issue #1632). The desktop packages are here
-// because they are private and never published: they ship only inside the senpi tarball.
-export const BUNDLED_INTERNAL_WORKSPACES = [
-	"packages/chord/package.json",
-	"packages/desktop-engine/package.json",
-	"packages/desktop-prelude/package.json",
-	"packages/desktop-protocol/package.json",
-	"packages/desktop-service/package.json",
-	"packages/desktop-tool/package.json",
-];
+// own published identity instead of a fork alias (issue #1632).
+export const BUNDLED_INTERNAL_WORKSPACES = ["packages/chord/package.json"];
 
 function writeWorkspaceVersion(file, version, dryRun, log, dryRunLog) {
 	const raw = readFileSync(file, "utf-8");

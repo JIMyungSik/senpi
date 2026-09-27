@@ -543,6 +543,11 @@ export class ModelConfig {
 		return new ModelConfig(providers, disabled);
 	}
 
+	/** The error models.json `content` would load with, or undefined when it is valid (senpi#2196). */
+	static validationError(content: string, path: string): string | undefined {
+		return ModelConfig.parse(content, path).getError();
+	}
+
 	private static parseAndMigrate(content: string, path: string): ModelConfig {
 		const config = ModelConfig.parse(content, path);
 		if (config.error !== undefined) return config;

@@ -16,8 +16,10 @@ import { startHostChildReaper } from "./child-reaper.ts";
 import type { RpcConnectionSink } from "./connection-handler.ts";
 import { parseClientCapabilities } from "./custom-capability.ts";
 import { GENERATION_HANDOFF_CAPABILITY } from "./host-decision.ts";
+import { type HostIdleOverrides, RPC_CLOSE_GRACE_MS_ENV, resolveHostIdlePolicy } from "./host-idle-policy.ts";
 import { parseIdleExitMs } from "./host-lifecycle.ts";
 import { HostMemorySampler } from "./host-memory-sampler.ts";
+import { runAsHostGenerationProcess } from "./host-process-role.ts";
 import { createEndpointReservations } from "./host-reservations.ts";
 import { armHostWatchdog, readHostWatchdogConfigFromBrandEnv } from "./host-watchdog.ts";
 import { attachJsonlLineReader, MAX_RPC_LINE_CHARACTERS } from "./jsonl.ts";
@@ -61,55 +63,21 @@ export interface MultiSessionHostOptions {
 	createBinding?: RpcBindingFactory;
 }
 
-/** Environment override for the idle-session eviction window, in milliseconds. */
-export const RPC_SESSION_IDLE_EVICTION_MS_ENV = "SENPI_RPC_SESSION_IDLE_EVICTION_MS";
-/** Environment override for the empty-host exit window, in milliseconds. */
-export const RPC_HOST_EMPTY_EXIT_MS_ENV = "SENPI_RPC_HOST_EMPTY_EXIT_MS";
-/** Environment override for the graceful close_session teardown window, in milliseconds. */
-export const RPC_CLOSE_GRACE_MS_ENV = "SENPI_RPC_CLOSE_GRACE_MS";
-/** Default idle-eviction window: 30 minutes after a session's last routed command or settled turn. */
-export const DEFAULT_SESSION_IDLE_EVICTION_MS = 30 * 60_000;
-/** Default empty-host exit: 15 minutes with zero open sessions, matching the supervisor's idle window. */
-export const DEFAULT_HOST_EMPTY_EXIT_MS = 15 * 60_000;
+export {
+	DEFAULT_HOST_EMPTY_EXIT_MS,
+	DEFAULT_SESSION_IDLE_EVICTION_MS,
+	RPC_HOST_EMPTY_EXIT_MS_ENV,
+	RPC_SESSION_IDLE_EVICTION_MS_ENV,
+	resolveHostIdlePolicy,
+} from "./host-idle-policy.ts";
+
 /** Win32 named-pipe close can leave libuv's server callback pending after handles are destroyed. */
 const WINDOWS_SHUTDOWN_HARD_EXIT_MS = 2_000;
 
-/** Explicit occupancy-policy overrides for createHostCore; tests inject clocks and hooks here. */
-export interface HostIdleOverrides {
-	now?: () => number;
-	idleEvictionMs?: number;
-	emptyExitMs?: number;
-	closeGraceMs?: number;
-	/** Shutdown hook the empty-exit window invokes; hosts pass their exit path. */
-	onEmptyExit?: () => void;
-	onHandoffParked?: (connections: readonly string[]) => Promise<void>;
-	/** Gate consulted before the empty-exit window advances (connected clients block it). */
-	canExitWhenEmpty?: () => boolean;
-}
-
-/**
- * Resolve the host's idle lifecycle policy.
- */
-export function resolveHostIdlePolicy(
-	env: Readonly<Record<string, string | undefined>>,
-	overrides: HostIdleOverrides = {},
-): { now: () => number; idleEvictionMs: number; emptyExitMs: number } {
-	return {
-		now: overrides.now ?? Date.now,
-		idleEvictionMs:
-			overrides.idleEvictionMs ??
-			parseIdleExitMs(env[RPC_SESSION_IDLE_EVICTION_MS_ENV]) ??
-			DEFAULT_SESSION_IDLE_EVICTION_MS,
-		emptyExitMs:
-			overrides.emptyExitMs ?? parseIdleExitMs(env[RPC_HOST_EMPTY_EXIT_MS_ENV]) ?? DEFAULT_HOST_EMPTY_EXIT_MS,
-	};
-}
-
 /**
  * Arm the host's self-observation: event-loop stall detection with per-session
- * attribution, and RSS reporting that tightens idle parking under pressure and, above the
- * refuse watermark, declines NEW worker sessions (#1905). Both run on unref'd timers, and
- * neither aborts or kills anything the host already holds.
+ * attribution, and RSS reporting that tightens idle parking under pressure. Both run on
+ * unref'd timers, and neither refuses, aborts or kills anything (#2207).
  */
 function startHostObservers(
 	router: SessionCommandRouter,
@@ -121,7 +89,6 @@ function startHostObservers(
 		emit: (record) => writer.broadcastHostRecord(record),
 		sessions: () => router.sessionCount,
 		onPressure: (pressure) => router.setMemoryPressure(pressure),
-		onCritical: (critical, rssMb) => router.setMemoryCritical(critical, rssMb),
 		...(options.onIdlePressure ? { onIdlePressure: options.onIdlePressure } : {}),
 	});
 	loopLag.start();
@@ -148,8 +115,11 @@ interface Connection {
  * requests remain requester-only; foreign observation uses attach-on-open.
  */
 export async function runMultiSessionHost(options: MultiSessionHostOptions): Promise<never> {
-	if (options.listen === undefined || options.listen === "stdio://") return runStdioHost(options);
-	return runSocketHost(options, resolveSocketPath(options.listen, options.agentDir));
+	return runAsHostGenerationProcess(() =>
+		options.listen === undefined || options.listen === "stdio://"
+			? runStdioHost(options)
+			: runSocketHost(options, resolveSocketPath(options.listen, options.agentDir)),
+	);
 }
 
 export function createHostCore(

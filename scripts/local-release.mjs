@@ -24,12 +24,6 @@ const packages = [
 	{ directory: "packages/protocol", name: "@earendil-works/pi-protocol" },
 	{ directory: "packages/client", name: "@earendil-works/pi-client" },
 	{ directory: "packages/senpi-codemode", name: "@code-yeongyu/senpi-codemode" },
-	// The desktop packages are private and bundled like chord, in build order.
-	{ directory: "packages/desktop-protocol", name: "@code-yeongyu/senpi-desktop-protocol" },
-	{ directory: "packages/desktop-prelude", name: "@code-yeongyu/senpi-desktop-prelude" },
-	{ directory: "packages/desktop-engine", name: "@code-yeongyu/senpi-desktop-engine" },
-	{ directory: "packages/desktop-service", name: "@code-yeongyu/senpi-desktop-service" },
-	{ directory: "packages/desktop-tool", name: "@code-yeongyu/senpi-desktop-tool" },
 	{ directory: "packages/coding-agent", name: "@code-yeongyu/senpi" },
 ];
 const packageCliCommand = "senpi";

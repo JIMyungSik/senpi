@@ -22,7 +22,6 @@ const internalPackagePrefixes = [
 	"@earendil-works/chord",
 	"@earendil-works/pi-",
 	"@code-yeongyu/senpi-codemode",
-	"@code-yeongyu/senpi-desktop-",
 ];
 const allowedInstallScriptPackages = new Map([
 	["@google/genai@2.23.0", "preinstall is a no-op in the published package"],

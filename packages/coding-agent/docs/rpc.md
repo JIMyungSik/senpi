@@ -394,17 +394,22 @@ symmetry with other commands; the answer is always JSON.
   capabilities, launchProfileId, reused, upgradeable }`. `--policy upgrade` (the default) allows a
   generation handoff, `never` only attaches or starts, and `fallback` answers exit 4 rather than attaching
   to a host this build disagrees with. `action` is `handoff` exactly when the socket was already served and
-  the process behind it changed.
+  the process behind it changed. An ensure invoked by an in-process session inside a multi-session host is
+  attach-only even when its caller requested an upgrade: a host generation never starts its own successor.
+  This is process-local state, not an environment marker, so a shell child remains free to run the explicit
+  `senpi host handoff` command.
 - `status` prints `{ reachable, socket, pid, instanceId, generation, engineVersion, capabilities,
   launchProfile, sessions: { total, interactive, worker, retained, foreign_attached, foreign_retained },
-  zombies, rss_mb, open_fds, env_keys, generations }` and exits 3 when nothing answers - with the same
+  zombies, rss_mb, host_rss_mb, open_fds, env_keys, generations }` and exits 3 when nothing answers - with the same
   field set, so a caller parses one shape and branches on one boolean. `sessions` is what `list_sessions`
   reports under the same flag, so `worker` stays `0` without `--include-workers`; `foreign_*` is the same
   count from the point of view of a client holding none of those sessions itself. `rss_mb`, `open_fds` and
-  `zombies` describe the daemon's whole process tree (supervisor plus host) and are `null` where the
-  platform does not publish them (`open_fds` is `/proc`-only). `generations` lists every ALIVE generation of
-  this daemon as `{ instanceId, generation, pid, engineVersion, rss_mb, sessions, current, alive }`, newest
-  ordinal last: `rss_mb` is that generation's own process tree, and `sessions` counts the session files it
+  `zombies` describe the daemon's whole process tree (supervisor, host, and every tool, kernel and server its
+  sessions spawned); `host_rss_mb` is only the supervisor and the host process, the number `ps` shows for those
+  pids and the one the host's memory sampler reads. All are `null` where the platform does not publish them
+  (`open_fds` is `/proc`-only). `generations` lists every ALIVE generation of
+  this daemon as `{ instanceId, generation, pid, engineVersion, rss_mb, host_rss_mb, sessions, current, alive }`, newest
+  ordinal last: `rss_mb` is that generation's own process tree, `host_rss_mb` only its supervisor and host processes, and `sessions` counts the session files it
   still claims in `reservations/` - the one occupancy number that is observable for a generation which no
   longer answers on the socket. Records of generations that ended are pruned by the read itself, so a status
   never lists a dead pid.
@@ -451,6 +456,15 @@ the ensuring process's environment. It receives an allowlist of NAMES - `PATH`, 
 spec's `env` states. Matching is case-sensitive on POSIX and case-insensitive on win32, where the OS wiring
 (`SystemRoot`, `ComSpec`, `PATHEXT`, ...) is allowed as well. Values are never inspected; `status` reports
 the granted NAMES as `env_keys` and never a value.
+
+The product-lane allowlist has an explicit transient denylist. Session context (`PI_SESSION_*`,
+`PI_GOAL_STORE_FILE`, `PI_PROVIDER`, `PI_MODEL`, `PI_REASONING_LEVEL`,
+`PI_PROMPT_CACHE_SAFE_WAIT_SECONDS`), the Python eval-kernel parent
+(`SENPI_PY_KERNEL_PARENT_PID`), and inherited `SENPI_RPC_HOST_*` generation/watch/scratch identity never
+cross into either an initial daemon or a handoff successor. Legitimate daemon configuration in the same
+namespace, such as RSS thresholds, idle windows and feature flags, remains allowed. The spawn applies the
+new generation's own instance id, generation and daemon directory after filtering, so caller overrides
+cannot replace lifecycle identity.
 
 #### Verifying a daemon build (live QA drivers)
 
@@ -735,10 +749,16 @@ REPORT: nothing here aborts a turn, kills a session, or refuses an `open_session
   `position` is 1-based and `in_flight` counts opens already accepted across the whole host,
   since every session shares one loop. It is addressed to the opener only, carries the request
   id under `for_request` rather than the response-id field, and is dropped if that connection
-  has disconnected. A client that later times out can report where it was queued instead of a
-  bare deadline.
+  has disconnected. The bundled `RpcClient` treats it as the host's acknowledgement: an
+  acknowledged open waits up to 10 minutes for its response instead of the 30 s request
+  deadline (a busy host was measured answering after 57 s), and a timeout after it names the
+  queue position instead of a bare deadline. A lost transport still rejects at once.
   `SENPI_RPC_LOOP_LAG_ERROR_MS` (default 5000) additionally broadcasts a `host_stalled` record
-  (`{ type, driftMs, sessionId?, tool? }`) to every connection, like the other content-free lifecycle records.
+  (`{ type, driftMs, sessionId?, tool?, processCpuMs?, heapDeltaMb? }`) to every connection, like the other content-free lifecycle records.
+  `processCpuMs` is the process CPU time spent during the stalled window and `heapDeltaMb` the JS heap change across it, so a
+  stall explains itself: CPU close to `driftMs` means the host was busy (a large heap drop in the same window points at a
+  collection), and CPU close to zero means the process did not run at all (the machine starved it, or it sat in a blocking
+  wait). The stderr line carries the same two numbers as `cpu=<ms> heap=<+/-MB>`.
 - **Stall attribution**: each routed command is dispatched inside an `AsyncLocalStorage` scope carrying its routing
   `sessionId`, and an in-process session's tool executions open a span carrying `{ sessionId, tool }` for as long as
   the tool runs. A stall is blamed on the synchronous work that finished inside the measured window, or on the tool
@@ -748,13 +768,9 @@ REPORT: nothing here aborts a turn, kills a session, or refuses an `open_session
 - **Memory pressure**: a 30-second sampler reads the host's RSS. Above `SENPI_RPC_HOST_RSS_WARN_MB` (default 4096) it
   broadcasts `host_memory_pressure` (`{ type, rssMb, sessions }`) on every sample, writes one stderr line per five
   minutes, and HALVES the idle-eviction window above while the host stays above the threshold, so idle sessions return
-  their memory sooner. It is released as soon as RSS falls back under the threshold. Above the REFUSE watermark
-  (`SENPI_RPC_HOST_RSS_REFUSE_MB`, default twice the warning threshold) the host is CRITICAL: an `open_session` that
-  would CREATE a `kind: "worker"` session is refused with the stable code `host_memory_pressure` and
-  `errorData { rssMb, retry_after_ms }`, until the next sample reads under the watermark. Nothing else changes: every
-  session the host already holds is served, an attach to a live path succeeds, interactive opens succeed, and nothing is
-  killed. This is the one memory-driven refusal on the in-process path; there is still no occupancy cap and no kill
-  policy. It exists because unbounded growth ended in a runtime crash that took every session with it (#1905).
+  their memory sooner. It is released as soon as RSS falls back under the threshold. Memory never refuses an open: the
+  shared host has no resource caps, so every `open_session` is admitted whatever the host holds (#2207). Hosts released
+  before #2207 refused NEW worker sessions above `SENPI_RPC_HOST_RSS_REFUSE_MB`; that variable is no longer read.
 - **Stall-proof dead-peer detection**: the socket dead-peer budget (30 s, `socket-event-fanout.ts`) counts only time
   the host loop actually SERVED. The loop-lag watchdog deposits each measured drift into a process-wide ledger
   (`loop-blocked-time.ts`) and the deadline re-arms for whatever blocked time landed inside its window, so a host that
@@ -786,7 +802,7 @@ absolute: **no blocking primitive, and no unbounded synchronous filesystem read.
   sleeps synchronously, or reads a large file synchronously inside an event handler freezes every other client's
   session on that host. Use the async API, and give genuinely CPU-bound work its own worker or child process.
 - The rule is observable rather than enforced at runtime: the stall watchdog above is what names the offender.
-  `host_stalled { driftMs, sessionId, tool }` and the matching stderr line are how a blocking call in a session or a
+  `host_stalled { driftMs, sessionId, tool, processCpuMs, heapDeltaMb }` and the matching stderr line are how a blocking call in a session or a
   tool becomes a report instead of an unexplained freeze.
 
 ### Worker ownership and flow control
@@ -903,7 +919,7 @@ In the response `error` field, machine-matchable:
 - `invalid_session_context: <detail>` (`open_session.context` past a documented cap: more than 32 keys, a key that does not match `^[a-z][a-z0-9_]*$`, a non-string or >16 KiB value, or more than 32 KiB of JSON in total; the detail names the cap and its byte budget)
 - `invalid_session_kind: <detail>` (`open_session.kind` other than `interactive` or `worker`)
 - `invalid_launch_profile: <detail>` (`open_session.auto_title` present but not a boolean)
-- `host_memory_pressure` (the in-process host is above `SENPI_RPC_HOST_RSS_REFUSE_MB`, default twice `SENPI_RPC_HOST_RSS_WARN_MB`, and declined to CREATE a `kind: "worker"` session; `errorData { rssMb, retry_after_ms }` says when to ask again. An attach to a live path, an interactive open, and every command on an existing session are never refused for memory - the client waits and retries, it never starts a second host or a per-child process)
+- `host_memory_pressure` (sent only by hosts released before #2207, which declined to CREATE a `kind: "worker"` session above `SENPI_RPC_HOST_RSS_REFUSE_MB`; `errorData { rssMb, retry_after_ms }` says when to ask again. Current hosts never refuse an open for memory; a client talking to an older generation waits and retries, it never starts a second host or a per-child process)
 - `media_not_found` (`get_media` for an unknown `toolCallId`, or a `contentIndex` that does not point at an image block)
 
 ### Tagging
@@ -1134,6 +1150,8 @@ Response:
 The `model` field is a full [Model](#model) object or `null`. The `sessionName` field is the display name set via `set_session_name`, or omitted if not set.
 
 `serviceTier` is the tier a request would carry right now (`"auto"`, `"flex"`, or `"priority"`), omitted when no tier applies. `fastMode` is `true` when the active model is served at the priority ("fast") tier — either because fast mode is on for this session or because the model selection itself pins `priority`. The two never disagree: whenever `fastMode` is `true`, `serviceTier` is `"priority"`.
+
+`lastProviderDiagnostic` is present after a failed turn whose provider supplied structured evidence: `{"category": "rate_limit", "httpStatus": 429, "code": "rate_limit_error", "evidence": "structured_code"}`. `category` is one of `auth`, `rate_limit`, `quota`, `context_limit`, `invalid_request`, `provider_unavailable`, `unknown`; `httpStatus` is absent for errors delivered inside a streamed response. It describes the same failure as the latest assistant `errorMessage` and is replaced or cleared with it. The failed assistant message in `message_end`, `agent_end`, `get_messages` and the session file carries the same object as `providerDiagnostic`. See [Provider failure diagnostics](sdk.md#provider-failure-diagnostics) for how it is derived.
 
 #### get_messages
 
@@ -2154,7 +2172,7 @@ Events are streamed to stdout as JSON lines during agent operation. Events do no
 | `loaded_surfaces_changed` | Loaded skills, extensions, or MCP inventory changed; re-read `get_commands` and `get_loaded_surfaces` |
 | `model_changed` | Active model changed (any source), with the thinking level in force afterwards |
 | `service_tier_changed` | Effective service tier or fast-mode state changed |
-| `session_closed` | Multi-session host: a routing handle ended. Optional `reason`: `client_close`, `idle_evicted`, `host_shutdown`, `replaced`, `handoff_parked`, `error` |
+| `session_closed` | Multi-session host: a routing handle ended. Optional `reason`: `client_close`, `idle_evicted`, `host_shutdown`, `replaced`, `handoff_parked`, `session_dir_removed`, `error` |
 | `session_parked` | Multi-session host: a retained session was released to disk at the idle window (`sessionId`, `sessionPath`). Replaces `session_closed` for that handle |
 | `host_stalled` | Multi-session host: the event loop was blocked past `SENPI_RPC_LOOP_LAG_ERROR_MS`, with the drift and the session/tool blamed for it |
 | `host_memory_pressure` | Multi-session host: RSS is above `SENPI_RPC_HOST_RSS_WARN_MB`, with the live session count |
@@ -2180,6 +2198,7 @@ When a multi-session host ends a routing handle it may name why:
 | --- | --- |
 | `client_close` | An attached client sent `close_session` |
 | `idle_evicted` | The idle sweep ended a session that was not retained |
+| `session_dir_removed` | No client held the session and its transcript directory was deleted; the sweep ended it, whatever the idle window |
 | `host_shutdown` | The host process is exiting (SIGTERM, idle-exit, empty-host). A retained session is closed, not parked |
 | `replaced` | The routing handle ended because the live session behind it was replaced |
 | `handoff_parked` | A generation handoff drained this host; reopen with `open_session { sessionPath }` |

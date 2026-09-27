@@ -216,6 +216,52 @@ describe("loop lag watchdog", () => {
 		expect(response?.success).toBe(false);
 	});
 
+	it("reports how much CPU the host used and how its heap moved during a stall (senpi#2211)", () => {
+		// Given probes for process CPU time and heap usage that the stalled window moves
+		let clock = 0;
+		let cpuMicros = 0;
+		let heapBytes = 900 * 1024 * 1024;
+		const records: RpcHostStalledEvent[] = [];
+		const watchdog = new LoopLagWatchdog({
+			emit: (record) => records.push(record),
+			log: () => {},
+			now: () => clock,
+			cpuUsage: () => ({ user: cpuMicros, system: 0 }),
+			heapUsed: () => heapBytes,
+			env: {},
+		});
+		watchdog.tick();
+		// When the loop is held 6s while the process burns 5.8s of CPU and the heap drops by 300 MB
+		clock += LOOP_LAG_TICK_MS + 6_000;
+		cpuMicros += 5_800_000;
+		heapBytes -= 300 * 1024 * 1024;
+		watchdog.tick();
+		// Then the stall carries the measured CPU and heap movement of that window
+		expect(records).toEqual([expect.objectContaining({ driftMs: 6_000, processCpuMs: 5_800, heapDeltaMb: -300 })]);
+	});
+
+	it("reports near-zero CPU when the host did not run during a stall (senpi#2211)", () => {
+		// Given probes that do not move: the process was not scheduled during the window
+		let clock = 0;
+		const logs: string[] = [];
+		const records: RpcHostStalledEvent[] = [];
+		const watchdog = new LoopLagWatchdog({
+			emit: (record) => records.push(record),
+			log: (message) => logs.push(message),
+			now: () => clock,
+			cpuUsage: () => ({ user: 1_000, system: 0 }),
+			heapUsed: () => 500 * 1024 * 1024,
+			env: {},
+		});
+		watchdog.tick();
+		// When the loop is late by 7s
+		clock += LOOP_LAG_TICK_MS + 7_000;
+		watchdog.tick();
+		// Then the stall says the host used no CPU and the heap did not move
+		expect(records).toEqual([expect.objectContaining({ driftMs: 7_000, processCpuMs: 0, heapDeltaMb: 0 })]);
+		expect(logs).toHaveLength(1);
+	});
+
 	it("measures a real 1.2s block through its own timer", async () => {
 		// Given a watchdog armed on real timers with a captured logger
 		const logs: string[] = [];

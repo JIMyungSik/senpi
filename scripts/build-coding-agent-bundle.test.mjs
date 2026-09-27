@@ -6,9 +6,9 @@ import { build } from "esbuild";
 import { commonBuildOptions, validateExternalImports } from "./build-coding-agent-bundle.mjs";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-// Both loaders resolve native files relative to their own package directory, so inlining either
-// into the bundle would point them at the bundle directory instead.
-const NATIVE_SIDECAR_PACKAGES = ["@earendil-works/pi-pty", "@code-yeongyu/senpi-desktop-engine"];
+// The PTY loader resolves native files relative to its own package directory, so inlining it
+// into the bundle would point it at the bundle directory instead.
+const NATIVE_SIDECAR_PACKAGES = ["@earendil-works/pi-pty"];
 
 describe("build-coding-agent-bundle", () => {
 	it("keeps native-sidecar packages external when coding-agent imports them", async () => {

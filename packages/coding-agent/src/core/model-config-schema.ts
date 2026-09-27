@@ -1,6 +1,7 @@
 import { DEFAULT_SLOT_BLOCK_MS, MAX_SLOT_BLOCK_MS } from "@earendil-works/pi-ai/auth/pool/failover";
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
+import { ThinkingLevelMapSchema, ThinkingLevelSchema } from "./model-config-thinking-schema.ts";
 
 /** Policy defaults shared with the pool engine so schema and runtime cannot drift. */
 export const CREDENTIAL_POLICY_DEFAULTS = {
@@ -76,17 +77,6 @@ const OpenRouterRoutingSchema = Type.Object({
 const VercelGatewayRoutingSchema = Type.Object({
 	only: Type.Optional(Type.Array(Type.String())),
 	order: Type.Optional(Type.Array(Type.String())),
-});
-
-const ThinkingLevelMapValueSchema = Type.Union([Type.String(), Type.Null()]);
-const ThinkingLevelMapSchema = Type.Object({
-	off: Type.Optional(ThinkingLevelMapValueSchema),
-	minimal: Type.Optional(ThinkingLevelMapValueSchema),
-	low: Type.Optional(ThinkingLevelMapValueSchema),
-	medium: Type.Optional(ThinkingLevelMapValueSchema),
-	high: Type.Optional(ThinkingLevelMapValueSchema),
-	xhigh: Type.Optional(ThinkingLevelMapValueSchema),
-	max: Type.Optional(ThinkingLevelMapValueSchema),
 });
 
 const ChatTemplateKwargScalarSchema = Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Null()]);
@@ -197,6 +187,7 @@ const ModelDefinitionSchema = Type.Object({
 	baseUrl: Type.Optional(Type.String({ minLength: 1 })),
 	reasoning: Type.Optional(Type.Boolean()),
 	thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
+	defaultThinkingLevel: Type.Optional(ThinkingLevelSchema),
 	input: Type.Optional(Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image"), Type.Literal("video")]))),
 	cost: Type.Optional(ModelCostSchema),
 	contextWindow: Type.Optional(Type.Number()),

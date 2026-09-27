@@ -1,3 +1,21 @@
+## 2026-09-27 - `models discover` in the help text (senpi#2196)
+
+### What changed
+
+- `packages/coding-agent/src/cli/args.ts`: the Commands section lists `senpi models discover <provider>` after `config`.
+
+### Why
+
+- The new subcommand has to be discoverable from `--help`.
+
+### Why an extension could not handle it
+
+- The help text is built by the CLI before any extension is loaded.
+
+### Expected merge conflict zones
+
+- `packages/coding-agent/src/cli/args.ts`: the Commands help block after the `config` line.
+
 ## 2026-09-27 - --rebind <path|id> (senpi#2181)
 
 ### What changed

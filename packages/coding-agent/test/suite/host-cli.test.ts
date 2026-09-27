@@ -21,6 +21,7 @@ const STATUS_FIELDS = [
 	"env_keys",
 	"generation",
 	"generations",
+	"host_rss_mb",
 	"instanceId",
 	"launchProfile",
 	"open_fds",
@@ -74,7 +75,20 @@ describe.skipIf(process.platform === "win32")("senpi host ensure", () => {
 	it("gives the daemon the allowlisted environment and nothing else", async () => {
 		const qa = await hostCliSandbox("env");
 
-		const ensured = onlyJsonLine(await runHostCli(qa, ["ensure", "--json"], { MY_SECRET_TOKEN: "canary-value" }));
+		const ensured = onlyJsonLine(
+			await runHostCli(qa, ["ensure", "--json"], {
+				MY_SECRET_TOKEN: "canary-value",
+				PI_SESSION_ID: "session-2208",
+				PI_SESSION_FILE: "/tmp/session-2208.jsonl",
+				PI_SESSION_CWD: "/tmp/worktree",
+				PI_GOAL_STORE_FILE: "/tmp/goals/session-2208.json",
+				PI_PROVIDER: "fake",
+				PI_MODEL: "fake-model",
+				PI_REASONING_LEVEL: "high",
+				PI_PROMPT_CACHE_SAFE_WAIT_SECONDS: "1770",
+				SENPI_PY_KERNEL_PARENT_PID: "2208",
+			}),
+		);
 
 		const environment = daemonEnvironmentText(ensured.pid as number);
 		expect(environment).toMatch(/\bHOME=/u);
@@ -83,6 +97,19 @@ describe.skipIf(process.platform === "win32")("senpi host ensure", () => {
 		// outlives that process must never have been told it.
 		expect(environment).not.toContain("MY_SECRET_TOKEN");
 		expect(environment).not.toContain("canary-value");
+		for (const name of [
+			"PI_SESSION_ID",
+			"PI_SESSION_FILE",
+			"PI_SESSION_CWD",
+			"PI_GOAL_STORE_FILE",
+			"PI_PROVIDER",
+			"PI_MODEL",
+			"PI_REASONING_LEVEL",
+			"PI_PROMPT_CACHE_SAFE_WAIT_SECONDS",
+			"SENPI_PY_KERNEL_PARENT_PID",
+		]) {
+			expect(environment).not.toContain(`${name}=`);
+		}
 	}, 120_000);
 });
 
@@ -123,6 +150,7 @@ describe.skipIf(process.platform === "win32")("senpi host status", () => {
 			"current",
 			"engineVersion",
 			"generation",
+			"host_rss_mb",
 			"instanceId",
 			"pid",
 			"rss_mb",
@@ -140,6 +168,7 @@ describe.skipIf(process.platform === "win32")("senpi host status", () => {
 		});
 		// `number | null` by contract: a platform that cannot answer `ps` still reports the field.
 		expect(generation.rss_mb === null || typeof generation.rss_mb === "number").toBe(true);
+		expect(generation.host_rss_mb === null || typeof generation.host_rss_mb === "number").toBe(true);
 	}, 120_000);
 
 	it("answers a socket nobody serves with the same shape and a refusal code", async () => {

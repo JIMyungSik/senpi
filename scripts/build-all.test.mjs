@@ -36,15 +36,10 @@ describe("build-all", () => {
 			"packages/pty",
 			"packages/telemetry",
 			"packages/protocol",
-			"packages/desktop-protocol",
-			"packages/desktop-prelude",
 			"packages/ai",
 			"packages/client",
-			"packages/desktop-engine",
 			"packages/agent",
-			"packages/desktop-service",
 			"packages/session-backends/sqlite-node",
-			"packages/desktop-tool",
 			"packages/coding-agent",
 			"packages/server",
 		]);
@@ -56,34 +51,6 @@ describe("build-all", () => {
 		assert.ok(index("packages/coding-agent") > index("packages/agent"));
 		assert.ok(index("packages/coding-agent") > index("packages/session-backends/sqlite-node"));
 		assert.ok(index("packages/server") > index("packages/coding-agent"));
-	});
-
-	it("builds every desktop package after the workspace packages it depends on", () => {
-		// Given
-		const index = (pkg) => BUILD_PHASES.findIndex((phase) => phase.includes(pkg));
-		const directoryByName = new Map(
-			BUILD_PHASES.flat().map((relativePath) => [
-				JSON.parse(readFileSync(join(root, relativePath, "package.json"), "utf8")).name,
-				relativePath,
-			]),
-		);
-		const desktopPackages = readdirSync(join(root, "packages"))
-			.filter((name) => name.startsWith("desktop-"))
-			.map((name) => `packages/${name}`);
-
-		// When
-		const misordered = desktopPackages.flatMap((relativePath) => {
-			const manifest = JSON.parse(readFileSync(join(root, relativePath, "package.json"), "utf8"));
-			return Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies })
-				.filter((name) => directoryByName.has(name))
-				.filter((name) => index(directoryByName.get(name)) >= index(relativePath))
-				.map((name) => `${relativePath} depends on ${name}`);
-		});
-
-		// Then
-		assert.ok(desktopPackages.every((relativePath) => index(relativePath) >= 0), "every desktop package is built");
-		assert.ok(index("packages/coding-agent") > Math.max(...desktopPackages.map(index)));
-		assert.deepEqual(misordered, []);
 	});
 
 	it("builds chord before every workspace that declares it as a dependency", () => {
@@ -122,14 +89,7 @@ describe("build-all", () => {
 
 		// Then
 		assert.equal(packageJson.name, "@earendil-works/pi-pty");
-		assert.deepEqual(phaseOne, [
-			"packages/tui",
-			"packages/pty",
-			"packages/telemetry",
-			"packages/protocol",
-			"packages/desktop-protocol",
-			"packages/desktop-prelude",
-		]);
+		assert.deepEqual(phaseOne, ["packages/tui", "packages/pty", "packages/telemetry", "packages/protocol"]);
 		assert.deepEqual(BUILD_PHASES[0], ["packages/chord"]);
 	});
 

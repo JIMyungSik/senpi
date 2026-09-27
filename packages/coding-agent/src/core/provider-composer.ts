@@ -203,6 +203,7 @@ function modelFromJson(
 		baseUrl,
 		reasoning: definition.reasoning ?? false,
 		thinkingLevelMap: definition.thinkingLevelMap,
+		defaultThinkingLevel: definition.defaultThinkingLevel,
 		input: (definition.input ?? ["text"]) as ("text" | "image" | "video")[],
 		cost: definition.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: definition.contextWindow ?? 128000,

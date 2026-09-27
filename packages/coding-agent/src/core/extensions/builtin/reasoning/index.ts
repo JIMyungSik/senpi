@@ -76,8 +76,8 @@ function clampToNonOff(level: ThinkingLevel, capability: ReasoningCapability): T
 
 /**
  * Level to restore when reasoning is switched back on: this model's durable last non-off level,
- * else a legacy non-off effective memory, else the global default when that is not "off", else
- * medium — always clamped to what the model supports.
+ * else a legacy non-off effective memory, else the model's own non-off default (senpi#2196), else
+ * the global default when that is not "off", else medium — always clamped to what the model supports.
  */
 function resolvePreferredOnLevel(
 	ctx: ExtensionCommandContext,
@@ -88,7 +88,12 @@ function resolvePreferredOnLevel(
 	const lastOnLevel = settingsManager.getModelLastOnThinkingLevel(model.provider, model.id);
 	const remembered = settingsManager.getModelThinkingLevel(model.provider, model.id);
 	const globalDefault = settingsManager.getDefaultThinkingLevel();
-	const preferred = lastOnLevel ?? nonOff(remembered) ?? nonOff(globalDefault) ?? DEFAULT_ON_LEVEL;
+	const preferred =
+		lastOnLevel ??
+		nonOff(remembered) ??
+		nonOff(model.defaultThinkingLevel) ??
+		nonOff(globalDefault) ??
+		DEFAULT_ON_LEVEL;
 	return clampToNonOff(preferred, capability);
 }
 

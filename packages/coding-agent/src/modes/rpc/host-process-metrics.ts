@@ -22,13 +22,19 @@ import { loadProcessTableReader, type ProcessTableReader, type ProcessTableRow }
 export interface HostProcessMetrics {
 	/** Resident memory of the daemon's process tree, in megabytes; shared pages count once per process. */
 	readonly rss_mb: number | null;
+	/**
+	 * Resident memory of the daemon's OWN processes - the lifecycle supervisor and the session host
+	 * it runs - without the tools, kernels and servers its sessions spawned. It is the number `ps`
+	 * shows for those pids and the one the host's memory sampler reads (senpi#2207).
+	 */
+	readonly host_rss_mb: number | null;
 	/** Open descriptors across the tree. `/proc`-only, so `null` off Linux. */
 	readonly open_fds: number | null;
 	/** Processes in the tree that have exited and whose status nobody collected. */
 	readonly zombies: number | null;
 }
 
-const UNOBSERVED: HostProcessMetrics = { rss_mb: null, open_fds: null, zombies: null };
+const UNOBSERVED: HostProcessMetrics = { rss_mb: null, host_rss_mb: null, open_fds: null, zombies: null };
 
 /** Resolved once per platform; `undefined` on runtimes that cannot read the table without spawning. */
 const readers = new Map<string, Promise<ProcessTableReader | undefined>>();
@@ -53,10 +59,15 @@ export async function readHostProcessMetrics(
 	const tree = descendants(rows, pid);
 	if (tree.length === 0) return UNOBSERVED;
 	return {
-		rss_mb: Math.round(tree.reduce((total, row) => total + row.rssKb, 0) / KILOBYTES_PER_MEGABYTE),
+		rss_mb: residentMegabytes(tree),
+		host_rss_mb: residentMegabytes(tree.filter((row) => row.pid === pid || row.ppid === pid)),
 		open_fds: platform === "linux" ? await openDescriptors(tree) : null,
 		zombies: tree.filter((row) => row.state.startsWith("Z")).length,
 	};
+}
+
+function residentMegabytes(rows: readonly ProcessTableRow[]): number {
+	return Math.round(rows.reduce((total, row) => total + row.rssKb, 0) / KILOBYTES_PER_MEGABYTE);
 }
 
 function descendants(rows: readonly ProcessTableRow[], root: number): readonly ProcessTableRow[] {

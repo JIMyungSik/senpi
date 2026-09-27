@@ -8,7 +8,12 @@
 import { mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { daemonEnvIsAllowed, daemonEnvKeys, daemonEnvOverrides } from "../../src/modes/rpc/host-daemon-env.ts";
+import {
+	daemonEnvIsAllowed,
+	daemonEnvironment,
+	daemonEnvKeys,
+	daemonEnvOverrides,
+} from "../../src/modes/rpc/host-daemon-env.ts";
 import { HostLaunchSpecError, loadHostLaunchSpec, parseHostLaunchSpec } from "../../src/modes/rpc/host-launch-spec.ts";
 
 const roots: string[] = [];
@@ -89,11 +94,55 @@ describe("daemon environment scope", () => {
 		expect(overrides).toEqual({ MY_SECRET_TOKEN: null, DATABASE_URL: null });
 	});
 
+	it("drops session, kernel, and inherited host identity from the daemon environment", () => {
+		const transient = {
+			PI_SESSION_ID: "session-2208",
+			PI_SESSION_FILE: "/tmp/session-2208.jsonl",
+			PI_SESSION_CWD: "/tmp/worktree",
+			PI_GOAL_STORE_FILE: "/tmp/goals/session-2208.json",
+			PI_PROVIDER: "fake",
+			PI_MODEL: "fake-model",
+			PI_REASONING_LEVEL: "high",
+			PI_PROMPT_CACHE_SAFE_WAIT_SECONDS: "1770",
+			SENPI_PY_KERNEL_PARENT_PID: "2208",
+			SENPI_RPC_HOST_WATCH_FD: "19",
+			SENPI_RPC_HOST_WATCH_PPID: "2207",
+			SENPI_RPC_HOST_SCRATCH_DIR: "/tmp/old-host",
+			SENPI_RPC_HOST_CLEANUP_PATHS: "/tmp/old-host/a",
+			SENPI_RPC_HOST_PUBLIC_SOCKET: "/tmp/old-host.sock",
+			SENPI_RPC_HOST_INSTANCE_ID: "old-instance",
+			SENPI_RPC_HOST_GENERATION: "7",
+			SENPI_RPC_HOST_DAEMON_DIR: "/tmp/old-daemon",
+		};
+
+		const overrides = daemonEnvOverrides(
+			{
+				PATH: "/bin",
+				SENPI_RPC_HOST_RSS_WARN_MB: "2048",
+				SENPI_ENABLE_GROK_NEO: "1",
+				...transient,
+			},
+			Object.fromEntries(Object.keys(transient).map((name) => [name, "explicit-attempt"])),
+			"linux",
+		);
+
+		expect(overrides).toEqual(Object.fromEntries(Object.keys(transient).map((name) => [name, null])));
+		expect(
+			daemonEnvKeys(transient, Object.fromEntries(Object.keys(transient).map((name) => [name, "explicit-attempt"]))),
+		).toEqual([]);
+	});
+
 	it("lets the spec add to the environment it was granted", () => {
 		const overrides = daemonEnvOverrides({ PATH: "/bin", CI: "1" }, { SENPI_X: "on" }, "linux");
 
 		expect(overrides).toEqual({ CI: null, SENPI_X: "on" });
 		expect(daemonEnvKeys({ PATH: "/bin", CI: "1" }, { SENPI_X: "on" }, "linux")).toEqual(["PATH", "SENPI_X"]);
+	});
+
+	it("replaces a win32 environment name case-insensitively", () => {
+		expect(daemonEnvironment({ Path: "C:\\old" }, { PATH: "C:\\new" }, {}, "win32")).toEqual({
+			PATH: "C:\\new",
+		});
 	});
 
 	it.each([

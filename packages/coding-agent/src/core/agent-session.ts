@@ -5738,6 +5738,8 @@ export class AgentSession {
 				selection = { level: remembered, source: "explicit" };
 			}
 		}
+		// senpi#2196: the model's own default outranks the global last-used level and carries no provenance.
+		requestedLevel ??= model.defaultThinkingLevel;
 		if (requestedLevel === undefined) {
 			const configuredDefault = this.settingsManager.getDefaultThinkingLevel();
 			if (configuredDefault !== undefined) {

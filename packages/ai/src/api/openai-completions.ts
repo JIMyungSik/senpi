@@ -19,6 +19,7 @@ import {
 	supportsMax,
 	supportsXhigh,
 } from "../models.ts";
+import { readProviderDiagnostic } from "../provider-diagnostic.ts";
 import type {
 	AssistantMessage,
 	CacheRetention,
@@ -53,6 +54,11 @@ import {
 	getOpenAICompletionsCompat as getCompat,
 	type ResolvedOpenAICompletionsCompat,
 } from "../utils/prompt-cache-ttl.ts";
+import {
+	awaitProviderTransport,
+	iterateProviderTransport,
+	openAICompatibleProviderDiagnosticFromError,
+} from "../utils/provider-diagnostic-sources.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderStreamRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
@@ -554,8 +560,13 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				body: OpenAICompletionsRequestParams,
 				requestConfig: typeof requestOptions,
 			) => { withResponse(): Promise<{ data: AsyncIterable<ChatCompletionChunk>; response: Response }> };
-			const createStream = (body: OpenAICompletionsRequestParams) =>
-				createChatCompletion(body, requestOptions).withResponse();
+			const createStream = async (body: OpenAICompletionsRequestParams) => {
+				const { data, response } = await awaitProviderTransport(
+					() => createChatCompletion(body, requestOptions).withResponse(),
+					openAICompatibleProviderDiagnosticFromError,
+				);
+				return { data: iterateProviderTransport(data, openAICompatibleProviderDiagnosticFromError), response };
+			};
 			const createRequest = async () => {
 				try {
 					return await createStream(params);
@@ -987,6 +998,8 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				delete (block as { streamIndex?: number }).streamIndex;
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
+			const providerDiagnostic = output.stopReason === "error" ? readProviderDiagnostic(error) : undefined;
+			if (providerDiagnostic !== undefined) output.providerDiagnostic = providerDiagnostic;
 			output.errorMessage = formatProviderError(normalizeProviderError(error));
 			// Some providers via OpenRouter give additional information in this field.
 			// normalizeProviderError already stringifies the parsed body (error.error)
@@ -1025,8 +1038,11 @@ export const streamSimple: StreamFunction<"openai-completions", SimpleStreamOpti
 		: model.id.includes("gpt-6-astra")
 			? "off"
 			: undefined;
+	// An explicitly mapped off value (for example an endpoint-advertised "none", senpi#2196) is how the
+	// model turns reasoning off, so only a map without one keeps the Astra off -> low fallback.
+	const hasMappedOff = typeof thinkingLevelMap?.off === "string";
 	const normalizedReasoning =
-		clampedReasoning === "off" && model.id.includes("gpt-6-astra") ? "low" : clampedReasoning;
+		clampedReasoning === "off" && model.id.includes("gpt-6-astra") && !hasMappedOff ? "low" : clampedReasoning;
 	const reasoningEffort =
 		normalizedReasoning === "off"
 			? undefined

@@ -1,3 +1,28 @@
+## 2026-09-28 - Drop the desktop packages from build, bundle and release tooling (senpi#2128)
+
+### What changed
+
+- `scripts/build-all.mjs`: the build phases no longer list the five `packages/desktop-*` workspaces.
+- `scripts/build-coding-agent-bundle.mjs`: `@code-yeongyu/senpi-desktop-engine` is no longer an external of the release bundle.
+- `scripts/check-entry-graphs.mjs`: the desktop workspace entries and their per-package budgets are removed.
+- `scripts/generate-coding-agent-shrinkwrap.mjs`: the `@code-yeongyu/senpi-desktop-` internal prefix is removed.
+- `scripts/local-release.mjs`, `scripts/release-packages.mjs`: the desktop workspaces leave the local-release and bundled-internal lists.
+- `scripts/prepare-senpi-bundled-workspaces.mjs`: the desktop workspaces and the engine prebuild naming are removed; `@earendil-works/pi-pty` is the only native prebuild.
+- `scripts/changes-md-policy.mjs`: `CRATES_SOURCE_PATTERN` returns to `crates/senpi-pty`.
+- Removed with their subject: `scripts/build-desktop-engine-local.mjs`, `scripts/ci/probe-desktop-engine.mjs`, `scripts/ci/windows-interactive-desktop-smoke.ps1`, `scripts/desktop-package-boundaries.test.mjs`. The generic never-published-workspace tests keep their coverage with synthetic fixtures.
+
+### Why
+
+- The desktop stack moved to omo (code-yeongyu/oh-my-openagent#8893); these references would otherwise point at deleted workspaces.
+
+### Why an extension could not handle it
+
+- Release tooling.
+
+### Expected merge conflict zones
+
+- LOW: the list literals in each script above.
+
 ## 2026-09-26 - Run on Bun when installed and tell Node.js users once how to switch (senpi#2157)
 
 ### What changed

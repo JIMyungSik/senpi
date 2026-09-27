@@ -168,11 +168,6 @@ function writeLocalReleaseFixture(repoRoot) {
 		["packages/client", "@earendil-works/pi-client"],
 		["packages/session-backends/sqlite-node", "@earendil-works/pi-storage-sqlite-node"],
 		["packages/senpi-codemode", "@code-yeongyu/senpi-codemode"],
-		["packages/desktop-protocol", "@code-yeongyu/senpi-desktop-protocol"],
-		["packages/desktop-prelude", "@code-yeongyu/senpi-desktop-prelude"],
-		["packages/desktop-engine", "@code-yeongyu/senpi-desktop-engine"],
-		["packages/desktop-service", "@code-yeongyu/senpi-desktop-service"],
-		["packages/desktop-tool", "@code-yeongyu/senpi-desktop-tool"],
 		["packages/coding-agent", "@code-yeongyu/senpi"],
 		["packages/server", "@code-yeongyu/senpi-server"],
 	]) {
@@ -207,10 +202,6 @@ function writeLocalReleaseFixture(repoRoot) {
 		join(repoRoot, "packages", "pty", "native", "prebuilds", nativeTarget, `senpi_pty.${nativeTarget}.node`),
 		"",
 	);
-
-	// The desktop engine package is staged with its native loader; its host executable is optional.
-	mkdirSync(join(repoRoot, "packages", "desktop-engine", "native"), { recursive: true });
-	writeFileSync(join(repoRoot, "packages", "desktop-engine", "native", "index.js"), "");
 
 	// senpi-codemode is bundled source-only; prepareSenpiBundledWorkspaces requires its loader-visible sources.
 	mkdirSync(join(repoRoot, "packages", "senpi-codemode", "src", "kernels", "py"), { recursive: true });

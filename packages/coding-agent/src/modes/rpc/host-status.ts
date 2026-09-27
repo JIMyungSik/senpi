@@ -49,6 +49,7 @@ export interface HostStatusReport {
 	readonly sessions: HostSessionCounts;
 	readonly zombies: number | null;
 	readonly rss_mb: number | null;
+	readonly host_rss_mb: number | null;
 	readonly open_fds: number | null;
 	/** Environment NAMES the daemon was granted, never values. */
 	readonly env_keys: readonly string[];
@@ -86,6 +87,7 @@ export async function readHostStatus(options: HostStatusOptions): Promise<HostSt
 		sessions: await readSessionCounts(options.socket, options.includeWorkers === true),
 		zombies: metrics.zombies,
 		rss_mb: metrics.rss_mb,
+		host_rss_mb: metrics.host_rss_mb,
 		open_fds: metrics.open_fds,
 		env_keys: await readDaemonEnvKeys(paths),
 		generations,
@@ -129,7 +131,7 @@ export function hostSummary(host: HostProtocolInfo | undefined): Record<string, 
 	};
 }
 
-const UNOBSERVED_METRICS: HostProcessMetrics = { rss_mb: null, open_fds: null, zombies: null };
+const UNOBSERVED_METRICS: HostProcessMetrics = { rss_mb: null, host_rss_mb: null, open_fds: null, zombies: null };
 
 interface SessionRow {
 	readonly kind: string;

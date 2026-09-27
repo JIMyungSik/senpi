@@ -9,20 +9,7 @@ import {
 } from "./prepare-senpi-bundled-workspaces.mjs";
 
 const PTY_PACKAGE = "@earendil-works/pi-pty";
-const DESKTOP_ENGINE_PACKAGE = "@code-yeongyu/senpi-desktop-engine";
-
-function desktopFiles(prefix = "package/", engineTarget = nativePrebuildTarget()) {
-	const root = `${prefix}node_modules/@code-yeongyu`;
-	return [
-		...["protocol", "prelude", "service", "tool", "engine"].flatMap((name) => [
-			{ path: `${root}/senpi-desktop-${name}/package.json` },
-			{ path: `${root}/senpi-desktop-${name}/dist/index.js` },
-		]),
-		{ path: `${root}/senpi-desktop-engine/native/index.js` },
-		{ path: `${root}/senpi-desktop-engine/${nativePrebuildFile(engineTarget, DESKTOP_ENGINE_PACKAGE)}` },
-	];
-}
-
+const UNPUBLISHED_PACKAGE = "@code-yeongyu/senpi-never-published";
 function clientProtocolFiles(prefix = "package/") {
 	return [
 		{ path: `${prefix}vendor/pi-client/index.js` },
@@ -95,7 +82,6 @@ describe("assertSenpiPackedWorkspaceFiles", () => {
 			files: [
 				{ path: "package/dist/cli.js" },
 				...clientProtocolFiles(),
-				...desktopFiles(),
 				...telemetryFiles(),
 				...chordFiles(),
 				...agentCoreFiles(),
@@ -129,7 +115,6 @@ describe("assertSenpiPackedWorkspaceFiles", () => {
 			files: [
 				{ path: "package/dist/cli.js" },
 				...clientProtocolFiles(),
-				...desktopFiles(),
 				...telemetryFiles(),
 				...chordFiles(),
 				...agentCoreFiles(),
@@ -166,7 +151,6 @@ describe("assertSenpiPackedWorkspaceFiles", () => {
 			files: [
 				{ path: "package/dist/cli.js" },
 				...clientProtocolFiles(),
-				...desktopFiles(),
 				...telemetryFiles(),
 				{ path: "package/npm-shrinkwrap.json" },
 				...chordFiles(),
@@ -200,7 +184,6 @@ describe("assertSenpiPackedWorkspaceFiles", () => {
 			files: [
 				{ path: "package/dist/cli.js" },
 				...clientProtocolFiles(),
-				...desktopFiles(),
 				...telemetryFiles(),
 				...chordFiles(),
 				...agentCoreFiles(),
@@ -232,7 +215,6 @@ describe("assertSenpiPackedWorkspaceFiles", () => {
 			files: [
 				{ path: "dist/cli.js" },
 				...clientProtocolFiles(""),
-				...desktopFiles(""),
 				...telemetryFiles(""),
 				...chordFiles(""),
 				...agentCoreFiles(""),
@@ -261,7 +243,6 @@ describe("assertSenpiPackedWorkspaceFiles", () => {
 			files: [
 				{ path: "package/dist/cli.js" },
 				...clientProtocolFiles(),
-				...desktopFiles(),
 				...telemetryFiles(),
 				...chordFiles(),
 				...agentCoreFiles(),
@@ -287,7 +268,6 @@ describe("assertSenpiPackedWorkspaceFiles", () => {
 			files: [
 				{ path: "package/dist/cli.js" },
 				...clientProtocolFiles(),
-				...desktopFiles(),
 				...telemetryFiles(),
 				...chordFiles(),
 				...agentCoreFiles(),
@@ -322,7 +302,6 @@ describe("assertSenpiPackedWorkspaceFiles", () => {
 			files: [
 				{ path: "package/dist/cli.js" },
 				...clientProtocolFiles(),
-				...desktopFiles("package/", "darwin-arm64"),
 				...chordFiles(),
 				...agentCoreFiles(),
 				{ path: "package/node_modules/@earendil-works/pi-ai/package.json" },
@@ -367,71 +346,18 @@ describe("assertSenpiPackedWorkspaceFiles", () => {
 		);
 	});
 
-	it("names the desktop engine prebuild per target as the executable its locator expects", () => {
-		// When
-		const checks = bundledWorkspacePackageChecks(SUPPORTED_NATIVE_PREBUILD_TARGETS);
-		const engineCheck = checks.find((check) => check.packageName === DESKTOP_ENGINE_PACKAGE);
-
-		// Then
-		assert.ok(engineCheck);
-		assert.deepEqual(engineCheck.requiredFiles, [
-			"package.json",
-			"dist/index.js",
-			"native/index.js",
-			"native/prebuilds/darwin-arm64/senpi-desktop-engine",
-			"native/prebuilds/darwin-x64/senpi-desktop-engine",
-			"native/prebuilds/linux-arm64/senpi-desktop-engine",
-			"native/prebuilds/linux-x64/senpi-desktop-engine",
-			"native/prebuilds/win32-arm64/senpi-desktop-engine.exe",
-			"native/prebuilds/win32-x64/senpi-desktop-engine.exe",
-		]);
-	});
-
 	it("rejects a packed manifest that declares a never-published fork package (senpi#2141)", () => {
-		// Given: the desktop workspaces are outside the publish set, so bun cannot resolve them.
-		const packed = { files: [{ path: "package/dist/cli.js" }, ...desktopFiles()] };
+		// Given: a fork-scope package outside the publish set, which bun cannot resolve.
+		const packed = { files: [{ path: "package/dist/cli.js" }] };
 
 		// When / Then
 		assert.throws(
 			() =>
 				assertSenpiPackedWorkspaceFiles(packed, {
-					runtimeDependencies: ["cross-spawn", DESKTOP_ENGINE_PACKAGE],
-					bundledDependencies: ["cross-spawn", DESKTOP_ENGINE_PACKAGE],
+					runtimeDependencies: ["cross-spawn", UNPUBLISHED_PACKAGE],
+					bundledDependencies: ["cross-spawn", UNPUBLISHED_PACKAGE],
 				}),
-			/declares packages that are never published.*@code-yeongyu\/senpi-desktop-engine/,
+			/declares packages that are never published.*@code-yeongyu\/senpi-never-published/,
 		);
-	});
-
-	it("does not require the files of never-published desktop workspaces the tarball leaves out", () => {
-		// Given: every bundled file except the desktop workspaces, which are outside the publish set.
-		const packed = {
-			files: [
-				{ path: "package/dist/cli.js" },
-				...clientProtocolFiles(),
-				...telemetryFiles(),
-				...chordFiles(),
-				...agentCoreFiles(),
-				{ path: "package/node_modules/@earendil-works/pi-ai/package.json" },
-				{ path: "package/node_modules/@earendil-works/pi-ai/dist/index.js" },
-				{ path: "package/node_modules/@earendil-works/pi-pty/package.json" },
-				{ path: "package/node_modules/@earendil-works/pi-pty/dist/index.js" },
-				{ path: "package/node_modules/@earendil-works/pi-pty/native/index.js" },
-				{ path: "package/node_modules/@earendil-works/pi-tui/package.json" },
-				{ path: "package/node_modules/@earendil-works/pi-tui/dist/index.js" },
-				{ path: "package/node_modules/@code-yeongyu/senpi-codemode/package.json" },
-				{ path: "package/node_modules/@code-yeongyu/senpi-codemode/src/index.ts" },
-				{ path: "package/node_modules/@code-yeongyu/senpi-codemode/src/kernels/py/prelude.py" },
-				{ path: "package/node_modules/@code-yeongyu/senpi-codemode/node_modules/@babel/parser/package.json" },
-			],
-		};
-
-		// When / Then
-		const originalWarn = console.warn;
-		console.warn = () => {};
-		try {
-			assert.doesNotThrow(() => assertSenpiPackedWorkspaceFiles(packed));
-		} finally {
-			console.warn = originalWarn;
-		}
 	});
 });

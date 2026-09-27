@@ -213,7 +213,7 @@ function verifiedRewrite(content: string, expected: JsonRecord): string {
 	return `${JSON.stringify(expected, null, 2)}\n`;
 }
 
-function uniqueBackupPath(path: string): string {
+export function uniqueBackupPath(path: string): string {
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	let backupPath = `${path}.backup-${stamp}`;
 	for (let attempt = 1; existsSync(backupPath); attempt++) backupPath = `${path}.backup-${stamp}-${attempt}`;

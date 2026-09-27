@@ -347,6 +347,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			thinkingSelection = { level: remembered, source: "explicit" };
 		}
 	}
+	// A model-declared default (senpi#2196) outranks the global setting, which tracks the last level
+	// chosen on any model; it is a default, not a user choice, so it carries no provenance.
+	if (thinkingLevel === undefined && model?.defaultThinkingLevel !== undefined) {
+		thinkingLevel = model.defaultThinkingLevel;
+	}
 	if (thinkingLevel === undefined) {
 		const configuredDefault = settingsManager.getDefaultThinkingLevel();
 		if (configuredDefault !== undefined) {

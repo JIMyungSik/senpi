@@ -35,15 +35,8 @@ export function nativePrebuildTarget(platform = process.platform, arch = process
 	return target;
 }
 
-// Each native workspace vendors its host prebuild under its own file name: pi-pty a Node addon,
-// the desktop engine a standalone executable.
-const NATIVE_PREBUILD_FILE_NAMES = new Map([
-	["@earendil-works/pi-pty", (target) => `senpi_pty.${target}.node`],
-	[
-		"@code-yeongyu/senpi-desktop-engine",
-		(target) => (target.startsWith("win32-") ? "senpi-desktop-engine.exe" : "senpi-desktop-engine"),
-	],
-]);
+// Each native workspace vendors its host prebuild under its own file name.
+const NATIVE_PREBUILD_FILE_NAMES = new Map([["@earendil-works/pi-pty", (target) => `senpi_pty.${target}.node`]]);
 
 export function nativePrebuildFile(target, packageName) {
 	const fileName = NATIVE_PREBUILD_FILE_NAMES.get(packageName);
@@ -105,40 +98,6 @@ const bundledWorkspaces = [
 		targetParts: ["@code-yeongyu", "senpi-codemode"],
 		sourceOnly: true,
 		requiredFiles: ["package.json", "src/index.ts", "src/kernels/py/prelude.py"],
-	},
-	// Desktop computer use. The engine package locates its executable beside itself, like pi-pty's
-	// addon; a missing host prebuild only leaves desktop control unavailable on that host.
-	{
-		source: "packages/desktop-protocol",
-		packageName: "@code-yeongyu/senpi-desktop-protocol",
-		targetParts: ["@code-yeongyu", "senpi-desktop-protocol"],
-		sourceOnly: false,
-	},
-	{
-		source: "packages/desktop-engine",
-		packageName: "@code-yeongyu/senpi-desktop-engine",
-		targetParts: ["@code-yeongyu", "senpi-desktop-engine"],
-		sourceOnly: false,
-		requiredFiles: ["package.json", "dist/index.js", "native/index.js"],
-		nativePrebuild: true,
-	},
-	{
-		source: "packages/desktop-prelude",
-		packageName: "@code-yeongyu/senpi-desktop-prelude",
-		targetParts: ["@code-yeongyu", "senpi-desktop-prelude"],
-		sourceOnly: false,
-	},
-	{
-		source: "packages/desktop-service",
-		packageName: "@code-yeongyu/senpi-desktop-service",
-		targetParts: ["@code-yeongyu", "senpi-desktop-service"],
-		sourceOnly: false,
-	},
-	{
-		source: "packages/desktop-tool",
-		packageName: "@code-yeongyu/senpi-desktop-tool",
-		targetParts: ["@code-yeongyu", "senpi-desktop-tool"],
-		sourceOnly: false,
 	},
 ];
 const vendoredTypeWorkspaces = [
@@ -432,8 +391,7 @@ export function assertSenpiPackedWorkspaceFiles(packed, options = {}) {
 			const dryRunPath = `${dryRunPackageRoot}/${requiredFile}`;
 			if (filePaths.has(path) || filePaths.has(dryRunPath)) continue;
 			// The platform native prebuild is optional — the pty loader falls back to a
-			// child_process pipe and the desktop engine reports itself unavailable when it is
-			// absent, so a host without a committed/built prebuild (e.g. linux-x64 in the
+			// child_process pipe when it is absent, so a host without a committed/built prebuild (e.g. linux-x64 in the
 			// npm-publish job) must not fail the pack check.
 			if (prebuildFiles.includes(requiredFile)) {
 				console.warn(`Warning: packed ${packageName} has no native prebuild ${requiredFile} (runtime fallback applies).`);

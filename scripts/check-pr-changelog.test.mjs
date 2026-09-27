@@ -99,18 +99,6 @@ describe("check-pr-changelog gate", () => {
 		assert.deepEqual(result.runtimeFiles, ["crates/senpi-pty/src/lib.rs"]);
 	});
 
-	it("fails when a crates/senpi-desktop-* crate changes without a changelog entry", () => {
-		// Given
-		const changedFiles = ["crates/senpi-desktop-engine/src/main.rs", "crates/senpi-desktopish/src/lib.rs"];
-
-		// When
-		const result = checkPrChangelog({ changedFiles, labels: [] });
-
-		// Then
-		assert.equal(result.pass, false);
-		assert.deepEqual(result.runtimeFiles, ["crates/senpi-desktop-engine/src/main.rs"]);
-	});
-
 	it("passes when only scripts and examples change", () => {
 		// Given
 		const changedFiles = ["scripts/local-release.mjs", "packages/senpi-codemode/examples/demo.ts"];

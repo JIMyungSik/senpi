@@ -346,6 +346,8 @@ ${chalk.bold("Commands:")}
                                  List installed extensions from settings
   ${APP_NAME} config [--no-approve]
                                  Open TUI to enable/disable package resources (Tab switches scope)
+  ${APP_NAME} models discover <provider>
+                                 Add an OpenAI-compatible provider's /models listing to models.json
   ${APP_NAME} app-server [--listen <url>]
                                  Serve agent sessions over the Codex app-server protocol
   ${APP_NAME} app-server daemon <start|stop|status|restart> [--listen <url>]

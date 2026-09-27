@@ -1,5 +1,25 @@
 # changes — senpi-monorepo root
 
+## Remove the desktop computer-use stack, now owned by omo (2026-09-28)
+
+### What changed
+
+- `Cargo.toml`: the workspace keeps `crates/senpi-pty` and `crates/senpi-grep`; the ten `crates/senpi-desktop-*` members and the desktop-only dependency pins are gone, and `Cargo.lock` loses only the packages they alone pulled in.
+- `tsconfig.json`: the `@code-yeongyu/senpi-desktop-{engine,prelude,protocol,service,tool}` path mappings are removed with the packages.
+- `bun.lock`, `package-lock.json`: the five `packages/desktop-*` workspaces drop out.
+
+### Why
+
+- Computer use ships from omo (code-yeongyu/oh-my-openagent#8893). senpi keeps only the generic hooks (tool kernel preludes, tool-owned permission parsers, the `tool_search` activation event; #2178). Wave 0 (#2129) had left the engine crates, packages and CI here (senpi#2128).
+
+### Why an extension could not handle it
+
+- Workspace layout and toolchain configuration.
+
+### Expected merge conflict zones
+
+- LOW: the `members` list and `[workspace.dependencies]` in `Cargo.toml`; the `paths` block in `tsconfig.json`.
+
 ## Reject committed merge-conflict markers (2026-09-27)
 
 ### What changed
