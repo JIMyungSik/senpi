@@ -124,7 +124,7 @@ describe("before_retry_fallback", () => {
 		await harness.session.prompt("retry account without a model chain");
 
 		expect(seen).toEqual([
-			{ type: "before_retry_fallback", provider: "faux", model: "faux-1", reason: "hard-error" },
+			{ type: "before_retry_fallback", provider: "faux", model: "faux-1", reason: "billing" },
 		]);
 		expect(harness.faux.getCallLog().map((call) => call.modelId)).toEqual(["faux-1", "faux-1"]);
 		expect(harness.eventsOfType("retry_fallback_applied")).toEqual([]);
