@@ -20,6 +20,7 @@ import { join, resolve } from "path";
 import { StringDecoder } from "string_decoder";
 import { APP_NAME, getAgentDir as getDefaultAgentDir, getSessionsDir } from "../config.ts";
 import { normalizePath, resolvePath } from "../utils/paths.ts";
+import type { RepositoryIdentity } from "./repository-identity.ts";
 import { listSessionFilesInDir, listSessionsFromDir, type SessionListProgress } from "./session-discovery.ts";
 import { materializeSessionEntries } from "./session-entry-materializer.ts";
 import { type ResidentStoreStats, ResidentStringStore } from "./session-resident-store.ts";
@@ -290,6 +291,10 @@ export interface SessionInfo {
 	messageCount: number;
 	firstMessage: string;
 	allMessagesText: string;
+	/** Latest repository identity the session recorded (see `repository-identity`). */
+	repositoryIdentity?: RepositoryIdentity;
+	/** Set on sessions of the current repository recorded at a path that no longer exists. */
+	moved?: boolean;
 }
 
 export type ReadonlySessionManager = Pick<

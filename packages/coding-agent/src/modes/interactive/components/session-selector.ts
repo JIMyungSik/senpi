@@ -377,9 +377,10 @@ class SessionList implements Component, Focusable {
 			const age = formatSessionDate(session.modified);
 			const msgCount = String(session.messageCount);
 			let rightPart = `${msgCount} ${age}`;
-			if (this.showCwd && session.cwd) {
+			if ((this.showCwd || session.moved) && session.cwd) {
 				rightPart = `${shortenPath(session.cwd)} ${rightPart}`;
 			}
+			const movedBadge = session.moved ? "moved from " : "";
 			if (this.showPath) {
 				rightPart = `${shortenPath(session.path)} ${rightPart}`;
 			}
@@ -411,8 +412,10 @@ class SessionList implements Component, Focusable {
 			// Build line
 			const leftPart = cursor + theme.fg("dim", prefix) + styledMsg;
 			const leftWidth = visibleWidth(leftPart);
-			const spacing = Math.max(1, width - leftWidth - visibleWidth(rightPart));
-			const styledRight = theme.fg(isConfirmingDelete ? "error" : "dim", rightPart);
+			const spacing = Math.max(1, width - leftWidth - visibleWidth(movedBadge + rightPart));
+			const styledRight =
+				(movedBadge ? theme.fg("warning", movedBadge) : "") +
+				theme.fg(isConfirmingDelete ? "error" : "dim", rightPart);
 
 			let line = leftPart + " ".repeat(spacing) + styledRight;
 			if (isSelected) {

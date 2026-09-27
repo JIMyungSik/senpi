@@ -1,4 +1,5 @@
 import { appendFile, rename, rm, writeFile } from "fs/promises";
+import { parseRepositoryIdentity } from "./repository-identity.ts";
 import { readFileLines, type SessionSummary } from "./session-summary.ts";
 import type { FileStamp } from "./session-summary-lru.ts";
 
@@ -8,7 +9,8 @@ import type { FileStamp } from "./session-summary-lru.ts";
  */
 export const SESSION_SUMMARY_INDEX_FILE = ".session-summaries.index";
 
-const INDEX_VERSION = 1;
+// 2: summaries carry the recorded repository identity; a version-1 index predates it and is re-read.
+const INDEX_VERSION = 2;
 const HEADER_LINE = `${JSON.stringify({ version: INDEX_VERSION })}\n`;
 
 /** One indexed session file: its basename, the stamp it was read at, and its summary. */
@@ -51,7 +53,8 @@ function isSessionSummary(value: unknown): value is SessionSummary {
 		typeof value.messageCount === "number" &&
 		typeof value.allMessagesText === "string" &&
 		isOptional(value.name, "string") &&
-		isOptional(value.lastActivityTime, "number")
+		isOptional(value.lastActivityTime, "number") &&
+		(value.repositoryIdentity === undefined || parseRepositoryIdentity(value.repositoryIdentity) !== undefined)
 	);
 }
 

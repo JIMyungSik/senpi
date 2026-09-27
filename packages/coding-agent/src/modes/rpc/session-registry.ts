@@ -348,6 +348,7 @@ export class RpcSessionRegistry {
 					runtime.launchProfile,
 				);
 				replacement.setRebindSession(entry.rebindSession);
+				runtime.releaseSessionHold();
 				entry.runtime = replacement;
 				this.syncRuntimeMetadata();
 				return result;

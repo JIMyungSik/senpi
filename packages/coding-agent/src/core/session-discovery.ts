@@ -41,6 +41,7 @@ export async function buildSessionInfo(filePath: string, store?: SessionSummaryS
 		messageCount: summary.messageCount,
 		firstMessage: summary.firstUserMessage || "(no messages)",
 		allMessagesText: summary.allMessagesText,
+		...(summary.repositoryIdentity ? { repositoryIdentity: summary.repositoryIdentity } : {}),
 	};
 }
 

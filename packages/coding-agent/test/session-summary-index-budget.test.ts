@@ -27,7 +27,7 @@ function writeSession(dir: string, id: string, activityMs: number): string {
 
 function indexedIds(dir: string): string[] {
 	const [header, ...entries] = readFileSync(join(dir, SESSION_SUMMARY_INDEX_FILE), "utf8").trimEnd().split("\n");
-	expect(JSON.parse(header ?? "")).toEqual({ version: 1 });
+	expect(JSON.parse(header ?? "")).toEqual({ version: 2 });
 	return entries.map((line) => (JSON.parse(line) as { summary: { header: { id: string } } }).summary.header.id).sort();
 }
 

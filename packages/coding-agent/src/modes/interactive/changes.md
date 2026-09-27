@@ -1,3 +1,23 @@
+## 2026-09-27 - /resume offers to move a moved repository's session here (senpi#2184)
+
+### What changed
+
+- `packages/coding-agent/src/modes/interactive/interactive-mode.ts`: `showSessionSelector` loads the current-folder scope through `currentScopeSessions` (this project's sessions plus the moved sessions of its repository) and the all scope through `allScopeSessions` (moved ones marked), and resolves a pick through `chooseResumePath` (`resume-rebind.ts`, new): a session of this repository recorded at another path gets the #2181 rebind question in a Yes/No dialog, a failure (for example another process still holding the session) is shown as an error and the current session stays.
+- `packages/coding-agent/src/modes/interactive/components/session-selector.ts`: a row with `session.moved` shows `moved from <old path>` on the right in every scope.
+
+### Why
+
+- Picking a moved repository's session from `/resume` either switched to a vanished cwd or offered a one-off "continue in current cwd" that was never persisted, and the session was invisible in the default current-folder view (senpi#2184).
+
+### Why an extension could not handle it
+
+- The session selector and its loaders are built inside `InteractiveMode`; no extension hook sits between a selector pick and the runtime switch.
+
+### Expected merge conflict zones
+
+- `packages/coding-agent/src/modes/interactive/interactive-mode.ts`: the two loaders and the `onSelect` callback in `showSessionSelector`, and one import.
+- `packages/coding-agent/src/modes/interactive/components/session-selector.ts`: the `rightPart` cwd block, the `spacing` / `styledRight` computation in the session row render.
+
 ## 2026-09-26 - Run on Bun when installed and tell Node.js users once how to switch (senpi#2157)
 
 ### What changed

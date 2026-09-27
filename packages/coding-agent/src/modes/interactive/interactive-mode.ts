@@ -248,6 +248,7 @@ import {
 	ProviderErrorPresentation,
 } from "./provider-error-presentation.ts";
 import { replayAssistantTools } from "./replay-assistant-tools.ts";
+import { allScopeSessions, chooseResumePath, currentScopeSessions } from "./resume-rebind.ts";
 import { isRiskyMainModel, RISKY_MAIN_MODEL_WARNING } from "./risky-main-model-warning.ts";
 import { maybeShowRuntimeNotice } from "./runtime-notice-presenter.ts";
 import { DEFAULT_SMOOTH_FPS, StreamingRevealController } from "./streaming-reveal.ts";
@@ -8286,15 +8287,15 @@ export class InteractiveMode {
 	private showSessionSelector(): void {
 		this.showSelector((done) => {
 			const selector = new SessionSelectorComponent(
-				(onProgress) =>
-					SessionManager.list(this.sessionManager.getCwd(), this.sessionManager.getSessionDir(), onProgress),
-				(onProgress) =>
-					this.sessionManager.usesDefaultSessionDir()
-						? SessionManager.listAll(onProgress)
-						: SessionManager.listAll(this.sessionManager.getSessionDir(), onProgress),
+				(onProgress) => currentScopeSessions(this.sessionManager, onProgress),
+				(onProgress) => allScopeSessions(this.sessionManager, onProgress),
 				async (sessionPath) => {
 					done();
-					await this.handleResumeSession(sessionPath);
+					const target = await chooseResumePath(sessionPath, this.sessionManager, {
+						confirm: (title, message) => this.showExtensionConfirm(title, message),
+						showError: (message) => this.showError(message),
+					});
+					if (target !== undefined) await this.handleResumeSession(target);
 				},
 				() => {
 					done();

@@ -43,6 +43,26 @@ OAR needs one bounded same-model retry after an already-completed account failov
 
 - MEDIUM: the `tryFallback` wrapper, `_retryAttempt` bookkeeping after a successful fallback, and the new `_tryDeferFallbackForSameModelRetry` helper next to `_handleRetryableError` in `agent-session.ts`.
 
+## 2026-09-27 - Sessions are held against moves by other processes; SessionInfo carries the recorded repository (senpi#2184)
+
+### What changed
+
+- `packages/coding-agent/src/core/agent-session-runtime.ts`: the runtime publishes a holder record for the session file it has open (`holdSessionFile`, `src/core/session-holders.ts`) in its constructor and on every `apply`, releases it in `teardownCurrent` and `dispose`, and exposes `releaseSessionHold()` for the RPC registry's replacement runtime. `switchSession` takes the hold for the target before tearing the current session down, so a session another process is moving (or has moved) fails the switch instead of being appended to at its old path.
+- `packages/coding-agent/src/core/session-manager.ts`: `SessionInfo` gains optional `repositoryIdentity` (latest `repository-identity` entry, read by the fork-only summary in `session-summary.ts`, index version 2) and `moved` (set by `src/core/moved-sessions.ts` on sessions of the current repository recorded at a path that no longer exists).
+
+### Why
+
+- A rebind copied and removed the session file with no cross-process protection, so a second process still writing the session at its old path recreated a header-less file and lost writes; the session lists had no way to recognise a moved repository's sessions (senpi#2184).
+
+### Why an extension could not handle it
+
+- Session ownership has to follow the runtime's session replacement lifecycle, and `SessionInfo` is the core listing contract consumed by the pickers.
+
+### Expected merge conflict zones
+
+- `packages/coding-agent/src/core/agent-session-runtime.ts`: the constructor tail, `teardownCurrent` after `unregisterSessionWriter`, `apply`, `switchSession` around `teardownCurrent` / `apply`, `dispose`, the module-level `holdActiveSession`, and one import.
+- `packages/coding-agent/src/core/session-manager.ts`: the `SessionInfo` interface tail and one type import.
+
 ## 2026-09-27 - A provider-rejected image no longer poisons later turns (senpi#2170)
 
 ### What changed

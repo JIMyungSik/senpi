@@ -15,6 +15,7 @@ import type {
 import { type ExtensionRunner, emitSessionShutdownEvent } from "./extensions/runner.ts";
 import type { CreateAgentSessionResult } from "./sdk.ts";
 import { assertSessionCwdExists } from "./session-cwd.ts";
+import { holdSessionFile, type SessionHold } from "./session-holders.ts";
 import { SessionManager } from "./session-manager.ts";
 import { reserveSessionWrite, unregisterSessionWriter } from "./session-write-reservation.ts";
 import { resetTimings, time } from "./timings.ts";
@@ -108,6 +109,8 @@ export class AgentSessionRuntime {
 	private _diagnostics: AgentSessionRuntimeDiagnostic[];
 	private _modelFallbackMessage?: string;
 	private readonly _launchProfile?: Readonly<AgentSessionLaunchProfile>;
+	// Advertises the open session file to other processes so none moves it out from under this one.
+	private _sessionHold?: SessionHold;
 	private _removedOnReplacement?: {
 		oldRunner: ExtensionRunner;
 		oldIdentities: Array<{ path: string; resolvedPath: string }>;
@@ -128,6 +131,13 @@ export class AgentSessionRuntime {
 		this._diagnostics = _diagnostics;
 		this._modelFallbackMessage = _modelFallbackMessage;
 		this._launchProfile = launchProfile;
+		this._sessionHold = holdActiveSession(_session.sessionManager, wasFlushed(_session.sessionManager));
+	}
+
+	/** Stops advertising the open session to other processes; a runtime that replaces this one holds its own. */
+	releaseSessionHold(): void {
+		this._sessionHold?.release();
+		this._sessionHold = undefined;
 	}
 
 	get services(): AgentSessionServices {
@@ -240,6 +250,7 @@ export class AgentSessionRuntime {
 		// Nothing writes to the replaced manager once its session is disposed, so the
 		// shared host may hand its session file to another worker.
 		unregisterSessionWriter(replaced);
+		this.releaseSessionHold();
 		mark("dispose");
 	}
 
@@ -255,7 +266,8 @@ export class AgentSessionRuntime {
 		await pending.oldRunner.emit({ type: "session_extensions_removed", reason: pending.reason, removed });
 	}
 
-	private async apply(result: CreateAgentSessionRuntimeResult): Promise<void> {
+	private async apply(result: CreateAgentSessionRuntimeResult, hold?: SessionHold): Promise<void> {
+		this._sessionHold = hold ?? holdActiveSession(result.session.sessionManager, false);
 		this._session = result.session;
 		this._services = result.services;
 		this._diagnostics = result.diagnostics;
@@ -290,18 +302,26 @@ export class AgentSessionRuntime {
 		const previousSessionFile = this.session.sessionFile;
 		const sessionManager = SessionManager.open(sessionPath, undefined, options?.cwdOverride);
 		assertSessionCwdExists(sessionManager, this.cwd);
+		// Held before the current session is torn down: a session being moved fails the switch here.
+		const hold = holdActiveSession(sessionManager, wasFlushed(sessionManager));
 		time("open", "switch");
-		await this.teardownCurrent("resume", sessionManager.getSessionFile());
-		await this.apply(
-			await this.createRuntime({
-				cwd: sessionManager.getCwd(),
-				agentDir: this.services.agentDir,
-				sessionManager,
-				sessionStartEvent: { type: "session_start", reason: "resume", previousSessionFile },
-				projectTrustContext: options?.projectTrustContextFactory?.(sessionManager.getCwd()),
-				launchProfile: this._launchProfile,
-			}),
-		);
+		try {
+			await this.teardownCurrent("resume", sessionManager.getSessionFile());
+			await this.apply(
+				await this.createRuntime({
+					cwd: sessionManager.getCwd(),
+					agentDir: this.services.agentDir,
+					sessionManager,
+					sessionStartEvent: { type: "session_start", reason: "resume", previousSessionFile },
+					projectTrustContext: options?.projectTrustContextFactory?.(sessionManager.getCwd()),
+					launchProfile: this._launchProfile,
+				}),
+				hold,
+			);
+		} catch (error) {
+			if (this._sessionHold !== hold) hold?.release();
+			throw error;
+		}
 		time("apply", "switch");
 		await this.finishSessionReplacement(options?.withSession);
 		time("rebind", "switch");
@@ -501,7 +521,23 @@ export class AgentSessionRuntime {
 		});
 		this.beforeSessionInvalidate?.();
 		this.session.dispose();
+		this.releaseSessionHold();
 	}
+}
+
+// A persisted session is written to disk with its first assistant message, so one that has an
+// assistant message and no file was moved away after it was read.
+function wasFlushed(sessionManager: SessionManager): boolean {
+	return sessionManager.getEntries().some((entry) => entry.type === "message" && entry.message.role === "assistant");
+}
+
+function holdActiveSession(sessionManager: SessionManager, expectExisting: boolean): SessionHold | undefined {
+	const sessionFile = sessionManager.getSessionFile();
+	if (!sessionManager.isPersisted() || sessionFile === undefined) return undefined;
+	return holdSessionFile(sessionFile, sessionManager.getSessionId(), {
+		cwd: sessionManager.getCwd(),
+		expectExisting,
+	});
 }
 
 /**

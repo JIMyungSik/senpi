@@ -24,6 +24,10 @@ Sessions are filed by the directory they started in. Each session also records w
 
 When `--session <id>` (or a pick in `--resume`) finds a session filed under another path and the current directory is the same git repository, senpi shows both paths and offers to move the session here. Answering `y` rebinds it: the session file moves to the current project, its recorded working directory is updated, and it keeps its id, history, goal, loops, and monitors. The old path no longer lists it. Use `--fork <id>` to copy it into a new session instead. A session from a different repository gets the fork prompt as before.
 
+The in-session `/resume` selector asks the same question when you pick such a session; answering No opens it where it is. The current-folder view of `/resume` and `--resume` also lists this repository's sessions whose old path no longer exists, marked "moved from <old path>", and `--continue` in a project with no session of its own offers the newest of them.
+
+A session that another senpi process still has open is never moved: the move stops and names that process (pid and directory) so you can quit it first. Each open session is advertised under `session-holders/` next to the session file; a record left by a process that has exited is ignored.
+
 `--rebind <path|id>` does the same without asking, for scripts. It refuses when the two directories are provably different repositories. Without an interactive terminal, `--session` never prompts: it prints the exact `--rebind` and `--fork` commands and exits with a non-zero status.
 
 For the JSONL file format and SessionManager API, see [Session Format](session-format.md).

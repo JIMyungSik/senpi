@@ -89,7 +89,7 @@ describe("issue #2181 rebinding a session into a moved repository", () => {
 		writeFileSync(goalSidecar, '{"goal":"ship"}\n');
 		const sourceHistory = readFileSync(source, "utf8").split("\n").slice(1).join("\n");
 
-		const rebound = rebindSessionFile(source, newCwd);
+		const rebound = await rebindSessionFile(source, newCwd);
 
 		expect(dirname(rebound)).toBe(getDefaultSessionDir(newCwd));
 		expect(basename(rebound)).toBe(basename(source));
@@ -110,25 +110,25 @@ describe("issue #2181 rebinding a session into a moved repository", () => {
 		expect(reopened.getEntries().map((entry) => entry.id)).toEqual(["u1", "a1", "r1"]);
 	});
 
-	it("rewrites the header in place when every project shares one session directory", () => {
+	it("rewrites the header in place when every project shares one session directory", async () => {
 		const root = tempDir();
 		const sessionDir = join(root, "sessions");
 		const source = writeSession(sessionDir, join(root, "old"));
 
-		const rebound = rebindSessionFile(source, join(root, "new"), sessionDir);
+		const rebound = await rebindSessionFile(source, join(root, "new"), sessionDir);
 
 		expect(rebound).toBe(source);
 		expect(JSON.parse(readFileSync(rebound, "utf8").split("\n")[0] ?? "")).toMatchObject({ cwd: join(root, "new") });
 	});
 
-	it("refuses to overwrite a session already filed under the target project", () => {
+	it("refuses to overwrite a session already filed under the target project", async () => {
 		const root = tempDir();
 		const oldCwd = join(root, "old");
 		const newCwd = join(root, "new");
 		const source = writeSession(getDefaultSessionDir(oldCwd), oldCwd);
 		writeSession(getDefaultSessionDir(newCwd), newCwd);
 
-		expect(() => rebindSessionFile(source, newCwd)).toThrow(/already exists/);
+		await expect(rebindSessionFile(source, newCwd)).rejects.toThrow(/already exists/);
 		expect(existsSync(source)).toBe(true);
 	});
 

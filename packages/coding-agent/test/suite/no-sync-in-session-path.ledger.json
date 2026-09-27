@@ -172,6 +172,20 @@
 			"note": "one-shot legacy provider-id migration (senpi#2044): the backup copy and the temp file renamed over models.json (KB-scale each). Runs only while the file still carries a legacy id, so at most once per file"
 		},
 		{
+			"file": "src/core/session-holders.ts",
+			"api": "readFileSync",
+			"symbol": "activeMover",
+			"count": 1,
+			"note": "session move lock (~100 bytes), read once when a runtime opens or switches to a session (senpi#2184)"
+		},
+		{
+			"file": "src/core/session-holders.ts",
+			"api": "writeFileSync",
+			"symbol": "publishHolderRecord",
+			"count": 1,
+			"note": "this process's holder record for the open session (~100 bytes), written once per session open or switch (senpi#2184)"
+		},
+		{
 			"file": "src/core/session-manager.ts",
 			"api": "appendFileSync",
 			"symbol": "_persist",

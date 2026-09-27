@@ -35,7 +35,7 @@ function writeSession(dir: string, id: string, cwd: string, texts: readonly stri
 /** Index entry basenames, last line wins, torn and foreign lines skipped. */
 function indexedFiles(dir: string): string[] {
 	const lines = readFileSync(join(dir, INDEX_FILE), "utf8").split("\n");
-	expect(JSON.parse(lines[0] ?? "")).toEqual({ version: 1 });
+	expect(JSON.parse(lines[0] ?? "")).toEqual({ version: 2 });
 	const files = new Set<string>();
 	for (const line of lines.slice(1)) {
 		try {

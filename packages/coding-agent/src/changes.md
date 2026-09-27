@@ -1,3 +1,21 @@
+## 2026-09-27 - --continue and --resume reach a moved repository's sessions (senpi#2184)
+
+### What changed
+
+- `packages/coding-agent/src/main.ts`: `rebindSessionOrExit` awaits the now lock-protected `rebindSessionFile`. `--resume` lists the moved sessions of this repository in the current-folder scope (`withMovedSessions`) and marks them in the all scope (`markMovedSessions`, `src/core/moved-sessions.ts`), and routes the pick through `resolveResumeTarget` (`src/core/resume-target.ts`), which offers the #2181 rebind and reports the process still holding the session. `--continue` in a project with no session file of its own asks `movedSessionToContinue` (`src/cli/continue-moved.ts`): interactive runs get the rebind prompt for the newest moved session, other runs get the `--rebind` command on stderr and a new session as before.
+
+### Why
+
+- After `mv repo`, `--continue` silently started an empty session and the `--resume` current-folder view was empty, so the moved sessions were only reachable by id (senpi#2184, oh-my-openagent#8914).
+
+### Why an extension could not handle it
+
+- `--continue` / `--resume` resolution runs in the CLI before any extension or session exists.
+
+### Expected merge conflict zones
+
+- `packages/coding-agent/src/main.ts`: the `--resume` branch after `selectSession`, the `--continue` branch, `rebindSessionOrExit`, and three imports.
+
 ## 2026-09-27 - Rebind a moved repository's session instead of only forking it (senpi#2181)
 
 ### What changed

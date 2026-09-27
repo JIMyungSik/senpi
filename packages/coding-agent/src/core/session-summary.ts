@@ -1,5 +1,10 @@
 import { open } from "fs/promises";
 import { StringDecoder } from "string_decoder";
+import {
+	parseRepositoryIdentity,
+	REPOSITORY_IDENTITY_ENTRY_TYPE,
+	type RepositoryIdentity,
+} from "./repository-identity.ts";
 import type { SessionHeader } from "./session-manager.ts";
 import { parseEntryLine, sessionInfoName, visibleMessage } from "./session-record.ts";
 
@@ -21,6 +26,8 @@ export type SessionSummary = {
 	readonly lastActivityTime: number | undefined;
 	/** Full user/assistant transcript text in file order. */
 	readonly allMessagesText: string;
+	/** Latest repository identity the session recorded, so a moved repository's sessions can be found. */
+	readonly repositoryIdentity?: RepositoryIdentity;
 };
 
 type SummaryAccumulator = {
@@ -29,6 +36,7 @@ type SummaryAccumulator = {
 	firstUserMessage: string;
 	messageCount: number;
 	lastActivityTime: number | undefined;
+	repositoryIdentity: RepositoryIdentity | undefined;
 	readonly texts: string[];
 };
 
@@ -39,6 +47,7 @@ function newAccumulator(): SummaryAccumulator {
 		firstUserMessage: "",
 		messageCount: 0,
 		lastActivityTime: undefined,
+		repositoryIdentity: undefined,
 		texts: [],
 	};
 }
@@ -56,6 +65,11 @@ function accumulateLine(accumulator: SummaryAccumulator, line: string): boolean 
 	if (!accumulator.header) {
 		if (entry.type !== "session" || typeof entry.id !== "string") return false;
 		accumulator.header = entry;
+		return true;
+	}
+
+	if (entry.type === "custom" && entry.customType === REPOSITORY_IDENTITY_ENTRY_TYPE) {
+		accumulator.repositoryIdentity = parseRepositoryIdentity(entry.data) ?? accumulator.repositoryIdentity;
 		return true;
 	}
 
@@ -167,5 +181,6 @@ export async function readSessionSummary(filePath: string): Promise<SessionSumma
 		messageCount: accumulator.messageCount,
 		lastActivityTime: accumulator.lastActivityTime,
 		allMessagesText: accumulator.texts.join(" "),
+		...(accumulator.repositoryIdentity ? { repositoryIdentity: accumulator.repositoryIdentity } : {}),
 	};
 }

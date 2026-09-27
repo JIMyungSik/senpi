@@ -6,6 +6,20 @@
 
 ### Added
 
+- The in-session `/resume` selector offers to move a session of this repository recorded at another path (a moved or re-cloned checkout) here, like `--session <id>` does, and both `/resume` and `--resume` list the sessions of this repository whose old path is gone in the current-folder view, marked "moved from <old path>". `--continue` in a project with no session of its own offers the newest moved one. A move now refuses while another senpi process still has the session open (naming its pid and directory), and concurrent moves of one session are serialized. ([#2184](https://github.com/code-yeongyu/senpi/issues/2184))
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [2026.9.27-2] - 2026-09-27
+
+### Breaking Changes
+
+### Added
+
 - Extension tools can declare `kernelPrelude` (JavaScript/Python snippets, one documentation line, exported names) to add globals to eval kernels while the tool is active; `getAllTools()` projects it and rejects exports that shadow built-in kernel helpers. ([#2128](https://github.com/code-yeongyu/senpi/issues/2128))
 - Extension tools can declare `permissionParser(input, cwd)`, so permission rules can gate their calls by tier (for example `my_tool:exec=deny`). A built-in parser for the same tool name always wins.
 - New `tool_activated` extension event, fired when the active tool set gains tools through `pi.setActiveTools()`, `tool_search` promotion, or a lazy by-name activation.

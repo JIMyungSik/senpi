@@ -6,6 +6,7 @@
  * createAgentSession() options. The SDK does the heavy lifting.
  */
 
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { type ImageContent, modelsAreEqual } from "@earendil-works/pi-ai";
@@ -28,6 +29,7 @@ import {
 	printAuthCommandHelp,
 	validateAuthCommandArgs,
 } from "./cli/auth-command.ts";
+import { movedSessionToContinue } from "./cli/continue-moved.ts";
 import { resolveCredentialForPrint } from "./cli/credential-print.ts";
 import { chooseCrossProjectAction, confirmSameRepositoryRebind } from "./cli/cross-project-session.ts";
 import {
@@ -70,8 +72,10 @@ import {
 	type ScopedModel,
 } from "./core/model-resolver.ts";
 import { ModelRuntime } from "./core/model-runtime.ts";
+import { markMovedSessions, withMovedSessions } from "./core/moved-sessions.ts";
 import { restoreStdout, takeOverStdout } from "./core/output-guard.ts";
 import { type AppMode, resolveProjectTrusted } from "./core/project-trust.ts";
+import { resolveResumeTarget } from "./core/resume-target.ts";
 import type { CreateAgentSessionOptions } from "./core/sdk.ts";
 import {
 	formatMissingSessionCwdPrompt,
@@ -467,9 +471,9 @@ function forkSessionOrExit(sourcePath: string, cwd: string, sessionDir?: string,
 	}
 }
 
-function rebindSessionOrExit(sourcePath: string, cwd: string, sessionDir?: string): SessionManager {
+async function rebindSessionOrExit(sourcePath: string, cwd: string, sessionDir?: string): Promise<SessionManager> {
 	try {
-		const reboundPath = rebindSessionFile(sourcePath, cwd, sessionDir);
+		const reboundPath = await rebindSessionFile(sourcePath, cwd, sessionDir);
 		console.log(chalk.dim(`Session moved to ${cwd}`));
 		return SessionManager.open(reboundPath, sessionDir);
 	} catch (error: unknown) {
@@ -580,38 +584,53 @@ export async function createSessionManager(
 	if (parsed.resume) {
 		try {
 			const { selectSession } = await import("./cli/session-picker.ts");
+			const movedOptions = sessionDir === undefined ? {} : { sessionDir };
 			const selectedPath = await selectSession(
-				(onProgress) => SessionManager.list(cwd, sessionDir, onProgress),
-				(onProgress) => SessionManager.listAll(sessionDir, onProgress),
+				(onProgress) => withMovedSessions(SessionManager.list(cwd, sessionDir, onProgress), cwd, movedOptions),
+				async (onProgress) => markMovedSessions(await SessionManager.listAll(sessionDir, onProgress), cwd),
 				settingsManager,
 			);
 			if (!selectedPath) {
 				console.log(chalk.dim("No session selected"));
 				process.exit(0);
 			}
-			const selectedCwd = sessionCwdOrUndefined(selectedPath);
-			if (
-				selectedCwd !== undefined &&
-				resolvePath(selectedCwd) !== resolvePath(cwd) &&
-				(await classifySessionRepository(selectedPath, selectedCwd, cwd)) === "same"
-			) {
-				console.log(chalk.yellow(`Session found in different project: ${selectedCwd}`));
-				const rebind = await confirmSameRepositoryRebind({
-					sessionArg: selectedPath,
-					cwd,
-					confirm: promptConfirm,
-					out: (line) => console.log(line),
-				});
-				if (rebind) return rebindSessionOrExit(selectedPath, cwd, sessionDir);
-			}
-			return SessionManager.open(selectedPath, sessionDir);
+			const target = await resolveResumeTarget({
+				sessionPath: selectedPath,
+				cwd,
+				...movedOptions,
+				confirm: (selectedCwd) => {
+					console.log(chalk.yellow(`Session found in different project: ${selectedCwd}`));
+					return confirmSameRepositoryRebind({
+						sessionArg: selectedPath,
+						cwd,
+						confirm: promptConfirm,
+						out: (line) => console.log(line),
+					});
+				},
+			}).catch((error: unknown) => {
+				console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
+				return process.exit(1);
+			});
+			if (target.rebound) console.log(chalk.dim(`Session moved to ${cwd}`));
+			return SessionManager.open(target.path, sessionDir);
 		} finally {
 			stopThemeWatcher();
 		}
 	}
 
 	if (parsed.continue) {
-		return SessionManager.continueRecent(cwd, sessionDir);
+		const recent = SessionManager.continueRecent(cwd, sessionDir);
+		const recentFile = recent.getSessionFile();
+		if (recentFile !== undefined && existsSync(recentFile)) return recent;
+		const moved = await movedSessionToContinue({
+			cwd,
+			...(sessionDir === undefined ? {} : { sessionDir }),
+			interactive: appMode === "interactive",
+			confirm: promptConfirm,
+			out: (line) => console.log(line),
+			err: (line) => console.error(line),
+		});
+		return moved === undefined ? recent : rebindSessionOrExit(moved, cwd, sessionDir);
 	}
 
 	if (parsed.sessionId) {

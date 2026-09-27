@@ -9,6 +9,7 @@ import {
 	type RepositoryMatch,
 	readRepositoryIdentity,
 } from "./repository-identity.ts";
+import { withSessionMoveLock } from "./session-holders.ts";
 import { getDefaultSessionDir, loadEntriesFromFile } from "./session-manager.ts";
 import { encodedSessionId } from "./session-sidecar-store.ts";
 
@@ -55,24 +56,41 @@ export function readSessionCwd(sessionFile: string): string | undefined {
  * header at `targetCwd`. The id, file name, every entry after the header, and the session's extension
  * sidecars are kept. The relocated copy is complete before the source is removed, so an interrupted
  * rebind leaves the session readable in at least one place. Returns the session file's new path.
+ *
+ * The move runs under the session's cross-process move lock and refuses (`SessionHeldError`) while
+ * another live process has the session open. A rebind that finds the same move already done by a
+ * concurrent process returns that target.
  */
-export function rebindSessionFile(sourcePath: string, targetCwd: string, sessionDir?: string): string {
+export async function rebindSessionFile(
+	sourcePath: string,
+	targetCwd: string,
+	sessionDir?: string,
+	options: { readonly moveLockWaitMs?: number } = {},
+): Promise<string> {
 	const source = resolvePath(sourcePath);
 	const cwd = resolvePath(targetCwd);
-	const { header, rest } = readHeaderLine(source);
 	const targetDir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
 	const target = join(targetDir, basename(source));
+	if (target !== source && !existsSync(source) && existsSync(target)) return target;
+	const { header } = readHeaderLine(source);
+	return withSessionMoveLock(source, header.id, () => moveSessionFile(source, target, cwd), {
+		...(options.moveLockWaitMs === undefined ? {} : { waitMs: options.moveLockWaitMs }),
+	});
+}
+
+function moveSessionFile(source: string, target: string, cwd: string): string {
+	if (target !== source && !existsSync(source) && existsSync(target)) return target;
+	const { header, rest } = readHeaderLine(source);
 	if (target !== source && existsSync(target)) {
 		throw new Error(`Cannot rebind session: ${target} already exists`);
 	}
+	const targetDir = dirname(target);
 	mkdirSync(targetDir, { recursive: true });
 	const temp = join(targetDir, `.${basename(source)}.rebind-${process.pid}.tmp`);
 	writeFileSync(temp, `${JSON.stringify({ ...header, cwd })}\n${rest}`, { flag: "wx" });
+	if (target !== source) moveSessionSidecars(dirname(source), targetDir, header.id);
 	renameSync(temp, target);
-	if (target !== source) {
-		moveSessionSidecars(dirname(source), targetDir, header.id);
-		rmSync(source, { force: true });
-	}
+	if (target !== source) rmSync(source, { force: true });
 	return target;
 }
 

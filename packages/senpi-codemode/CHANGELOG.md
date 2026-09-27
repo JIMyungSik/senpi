@@ -12,6 +12,20 @@
 
 ### Removed
 
+## [2026.9.27-2] - 2026-09-27
+
+### Breaking Changes
+
+### Added
+
+- The eval kernels install each active tool's `kernelPrelude`: its JavaScript or Python statements run before a cell whenever one of the prelude's exports is missing, a deactivated tool's exports are removed before the next cell, and each prelude's documentation line joins the eval prompt's helper list. Exports that would shadow a built-in helper are rejected. ([#2178](https://github.com/code-yeongyu/senpi/pull/2178))
+
+### Changed
+
+### Fixed
+
+### Removed
+
 ## [2026.9.27] - 2026-09-27
 
 ### Breaking Changes
