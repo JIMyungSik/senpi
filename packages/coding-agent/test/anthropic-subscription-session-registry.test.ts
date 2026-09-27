@@ -612,13 +612,18 @@ describe("Claude SDK OAuth session registry", () => {
 		expect((await turn).messages).toEqual([first, second, terminal]);
 	});
 
-	it("closes the query when the pre-replay buffer overflows", async () => {
+	it("drops an overflowing pre-replay segment and still claims the turn (#2192)", async () => {
 		const { query, registry, entry } = pumpFixture();
 		const turn = submitSessionTurn(registry, entry, { message: userContent }, { maxMessages: 1, maxBytes: 10_000 });
+		const submitted = await submittedMessage(entry);
 		query.emit(streamEvent("stream-1", entry.sdkSessionId));
 		query.emit(streamEvent("stream-2", entry.sdkSessionId));
-		await expect(turn).rejects.toThrow(/pre-replay buffer/i);
-		expect(query.closes).toBe(1);
+		query.emit(streamEvent("stream-3", entry.sdkSessionId));
+		query.emit(replay(submitted.uuid!, entry.sdkSessionId));
+		const terminal = result(submitted.uuid, entry.sdkSessionId);
+		query.emit(terminal);
+		expect((await turn).messages).toEqual([terminal]);
+		expect(query.closes).toBe(0);
 	});
 
 	it("ends a claimed turn only at its result and returns to idle", async () => {

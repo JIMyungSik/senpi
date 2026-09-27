@@ -138,6 +138,17 @@ export interface McpServerCounters {
 	reconnectCount: number;
 }
 
+/**
+ * Held by a startup connect from its start until it hands the server's catalog
+ * to a registration pass. While it owns registration, other passes register the
+ * catalog known when the connect began, never the in-flight one, so the catalog
+ * lands exactly once (#2177).
+ */
+export interface McpStartupCatalogClaim {
+	readonly cachedCatalog: McpCachedServerCatalog | undefined;
+	readonly ownsRegistration: () => boolean;
+}
+
 export interface McpConnectionEntry {
 	readonly key: string;
 	readonly name: string;
@@ -151,6 +162,9 @@ export interface McpConnectionEntry {
 	readonly authPlan?: ServerAuthPlan;
 	cachedCatalog?: McpCachedServerCatalog;
 	cacheRefreshedAfterConnect: boolean;
+	startupCatalogClaim?: McpStartupCatalogClaim;
+	/** `mcpRegistrationIdentity` of what the session last registered for this server. */
+	registeredIdentity?: string;
 	/** Full mcp tool names last registered for this server (list_changed diffing). */
 	knownToolNames?: string[];
 	/** Latest `/mcp status` list_changed delta line, e.g. "2 added (inactive), 1 removed". */

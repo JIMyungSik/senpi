@@ -1,3 +1,23 @@
+## 2026-09-27 - another turn's events never fail the pending turn before its replay (senpi#2192)
+
+### What changed
+
+- `session-turn-claim.ts`: `bufferBeforeReplay` holds only main-thread `stream_event`s (a `parent_tool_use_id` event is a background subagent's) and, past the count/byte caps, drops the segment and ignores further events until that foreign turn ends instead of throwing `pre-replay buffer overflow`. New `isForeignResult` (a `user_message_uuid` other than ours, or an autonomous result without one) and `endForeignTurnBeforeReplay`.
+- `session-registry-pump.ts`: a foreign `result` before our replay ends that turn's segment and keeps waiting, instead of throwing `result arrived before replay claim`. An unattributable non-autonomous result still throws as before.
+- `session-turn-types.ts`: `ActiveTurn.preReplayOverflowed`.
+
+### Why
+
+- Claude Code yields a submitted prompt's replay before that turn's API call, on the same ordered stream, so anything streamed ahead of our replay belongs to a turn it is already running: an autonomous turn (task notification) or a background subagent. Those events filled the 64-message buffer and closed the resident query with a user-visible error, and the foreign turn's result then failed our turn too.
+
+### Why an extension could not handle it
+
+- The claim path is internal to this builtin.
+
+### Expected merge conflict zones
+
+- LOW: `bufferBeforeReplay` and the pre-claim `result` branch in `handleMessage`.
+
 ## 2026-09-24 - fingerprint hashes the system prompt verbatim (senpi#2093)
 
 ### What changed

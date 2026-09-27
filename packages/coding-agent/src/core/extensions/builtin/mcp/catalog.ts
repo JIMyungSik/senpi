@@ -49,6 +49,19 @@ export async function collectToolCatalog(
 	}));
 }
 
+/** What registering these tools with this catalog's resources and prompts exposes;
+ * equal identities register identical definitions. */
+export function mcpRegistrationIdentity(
+	tools: readonly McpToolCatalogEntry[],
+	catalog: McpCachedServerCatalog | undefined,
+): string {
+	return JSON.stringify([
+		tools.map((entry) => [entry.tool, entry.description, entry.schema, entry.annotations]),
+		catalog?.resources ?? [],
+		catalog?.prompts ?? [],
+	]);
+}
+
 export function cachedToolsToCatalogEntries(
 	server: string,
 	catalog: McpCachedServerCatalog,

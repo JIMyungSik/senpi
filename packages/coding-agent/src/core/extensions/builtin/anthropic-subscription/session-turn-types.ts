@@ -12,6 +12,7 @@ export interface ActiveTurn {
 	messages: SDKMessage[];
 	preReplay: SDKMessage[];
 	preReplayBytes: number;
+	preReplayOverflowed: boolean;
 	claimed: boolean;
 	aborted: boolean;
 	interruptReceipt?: unknown;

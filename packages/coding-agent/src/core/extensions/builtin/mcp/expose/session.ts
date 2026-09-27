@@ -1,6 +1,11 @@
 import type { ExtensionAPI } from "../../../types.ts";
 import type { ToolSearchService } from "../../tool-search/service.ts";
-import { cachedToolsToCatalogEntries, collectToolCatalog, type McpToolCatalogEntry } from "../catalog.ts";
+import {
+	cachedToolsToCatalogEntries,
+	collectToolCatalog,
+	type McpToolCatalogEntry,
+	mcpRegistrationIdentity,
+} from "../catalog.ts";
 import type { McpCachedServerCatalog } from "../catalog-cache.ts";
 import type { ResolvedMcpConfig } from "../config-schema.ts";
 import type { ServerConnection } from "../connection.ts";
@@ -26,6 +31,9 @@ export interface McpDirectRegistrationEntry {
 	readonly cachedCatalog?: McpCachedServerCatalog;
 	readonly ensureFresh?: () => Promise<void>;
 	readonly ensureCachedToolConnected?: () => Promise<void>;
+	/** A startup connect still owns this server's catalog; its refresh registers it. */
+	readonly startupCatalogPending?: boolean;
+	readonly onRegistered?: (identity: string) => void;
 }
 
 export async function registerDirectMcpTools(
@@ -41,12 +49,13 @@ export async function registerDirectMcpTools(
 	const proxyGateways: { server: string; entries: McpToolCatalogEntry[] }[] = [];
 	const resourceServers: McpResourceServer[] = [];
 	const promptServers: McpPromptServer[] = [];
+	const recordRegisteredListings: Array<() => void> = [];
 	for (const entry of entries) {
 		const server = config.servers[entry.name];
 		if (server?.config === undefined) continue;
 		const catalog =
 			entry.cachedCatalog === undefined
-				? entry.connection.state === "connected"
+				? entry.connection.state === "connected" && entry.startupCatalogPending !== true
 					? await collectToolCatalog(entry.name, entry.connection, server.config, {
 							agentDir: entry.agentDir,
 							artifacts: entry.artifacts,
@@ -67,6 +76,8 @@ export async function registerDirectMcpTools(
 							outputGuard: config.settings.outputGuard,
 						},
 					);
+		const identity = mcpRegistrationIdentity(catalog, entry.cachedCatalog);
+		recordRegisteredListings.push(() => entry.onRegistered?.(identity));
 		const cachedPrompts = entry.cachedCatalog?.prompts ?? [];
 		if (cachedPrompts.length > 0) {
 			promptServers.push({
@@ -103,6 +114,7 @@ export async function registerDirectMcpTools(
 		proxyGateways.length === 0 &&
 		options.refreshActiveSetWhenEmpty !== true
 	) {
+		for (const record of recordRegisteredListings) record();
 		return undefined;
 	}
 	const utilityTools = resourceServers.length > 0 ? createMcpResourceTools(() => resourceServers) : [];
@@ -112,5 +124,6 @@ export async function registerDirectMcpTools(
 		toolSearchService,
 		(message) => createMcpLogger("service").warn(message),
 	);
+	for (const record of recordRegisteredListings) record();
 	return { ...registration, promptServers, resourceServers };
 }

@@ -14,7 +14,15 @@ import {
 	transitionToTurnStreaming,
 	transitionToTurnWaiting,
 } from "./session-registry-state.ts";
-import { bufferBeforeReplay, claimTurn, deliver, isReplayFor, resultMatchesTurn } from "./session-turn-claim.ts";
+import {
+	bufferBeforeReplay,
+	claimTurn,
+	deliver,
+	endForeignTurnBeforeReplay,
+	isForeignResult,
+	isReplayFor,
+	resultMatchesTurn,
+} from "./session-turn-claim.ts";
 import type { ActiveTurn, PreReplayBufferLimits, SessionTurnResult } from "./session-turn-types.ts";
 
 export type { SessionTurnResult } from "./session-turn-types.ts";
@@ -142,6 +150,8 @@ function handleMessage(
 			for (const buffered of claimTurn(entry, turn)) deliver(entry, turn, buffered);
 			finishTurn(registry, entry, turn, message);
 			return false;
+		} else if (message.type === "result" && isForeignResult(message, turn)) {
+			endForeignTurnBeforeReplay(turn);
 		} else if (message.type === "result") {
 			// A result that fails before the SDK ever echoed our user message (a
 			// 400 version floor, a session limit) must surface as that failure so
@@ -229,6 +239,7 @@ export function submitSessionTurn(
 			messages: [],
 			preReplay: [],
 			preReplayBytes: 0,
+			preReplayOverflowed: false,
 			claimed: false,
 			aborted: false,
 			onMessage: request.onMessage,

@@ -34,6 +34,14 @@ export interface HostCrashRecord {
 	readonly code?: number;
 	/** How long the child had been alive, in milliseconds. */
 	readonly uptimeMs: number;
+	/** Always `rpc-host`; absent on records written before the field existed. */
+	readonly kind?: "rpc-host";
+	/** The supervisor saw the exit itself, so `signal`/`code` are exact. */
+	readonly detection?: "supervisor";
+	/** The runtime the supervisor and its child share, as of the death. */
+	readonly bunVersion?: string;
+	readonly senpiVersion?: string;
+	readonly productVersion?: string;
 }
 
 /**

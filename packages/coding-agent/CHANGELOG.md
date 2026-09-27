@@ -6,11 +6,15 @@
 
 ### Added
 
+- Interactive and print processes leave a record when they crash natively. Each writes a lifetime marker under `<agent dir>/process-crashes/live/` that any exit JavaScript can observe removes; the next start turns the marker of a dead process into one entry in `process-crashes/crashes.jsonl` with the process kind, uptime, and Bun and senpi versions. RPC host crash records now name their kind and versions too. ([#2194](https://github.com/code-yeongyu/senpi/issues/2194))
 - The in-session `/resume` selector offers to move a session of this repository recorded at another path (a moved or re-cloned checkout) here, like `--session <id>` does, and both `/resume` and `--resume` list the sessions of this repository whose old path is gone in the current-folder view, marked "moved from <old path>". `--continue` in a project with no session of its own offers the newest moved one. A move now refuses while another senpi process still has the session open (naming its pid and directory), and concurrent moves of one session are serialized. ([#2184](https://github.com/code-yeongyu/senpi/issues/2184))
 
 ### Changed
 
 ### Fixed
+
+- A Claude subscription (`anthropic-subscription`) turn no longer fails with "Anthropic Subscription pre-replay buffer overflow" or "result arrived before replay claim" when Claude Code is still running a turn of its own (a background task notification or a background subagent) as the message is sent. That turn's output is no longer counted against, or flushed into, the waiting turn, and the session stays open. ([#2192](https://github.com/code-yeongyu/senpi/issues/2192))
+- MCP tools are registered once per session. Before, a server whose catalog was still loading when the startup window ended had its catalog listed again and every tool registered twice, and each connect re-registered an unchanged catalog about 300ms later. ([#2177](https://github.com/code-yeongyu/senpi/issues/2177))
 
 ### Removed
 

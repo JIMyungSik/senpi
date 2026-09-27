@@ -39,7 +39,7 @@ export class SharedMcpLease extends ServerConnection {
 		this.options = options;
 		this.owner = owner;
 		this.key = key;
-		this.#unsubscribeTools = shared.connection.onToolsChanged(() => this.markToolsChanged());
+		this.#unsubscribeTools = shared.connection.onToolsChanged((event) => this.markToolsChanged(event.cause));
 	}
 
 	override get state() {

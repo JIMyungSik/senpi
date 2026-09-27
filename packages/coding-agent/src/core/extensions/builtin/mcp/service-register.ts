@@ -24,10 +24,16 @@ export async function registerMcpServiceDirectTools(
 		config,
 		[...entries].map((entry) => {
 			const serverConfig = config.servers[entry.name]?.config;
+			const claim = entry.startupCatalogClaim;
+			const startupCatalogPending = claim?.ownsRegistration() === true;
 			return {
 				agentDir: entry.agentDir,
 				artifacts: entry.artifacts,
-				cachedCatalog: entry.cachedCatalog,
+				cachedCatalog: startupCatalogPending ? claim?.cachedCatalog : entry.cachedCatalog,
+				startupCatalogPending,
+				onRegistered: (identity) => {
+					entry.registeredIdentity = identity;
+				},
 				connection: entry.connection,
 				ensureFresh: () => entry.authPlan?.refresh?.ensureFresh().then(() => undefined) ?? Promise.resolve(),
 				ensureCachedToolConnected: () => connectAndRefreshMcpCatalog(entry, serverConfig),

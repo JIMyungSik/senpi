@@ -169,11 +169,12 @@ export class ServerConnection {
 		this.#markFailure("needs_client_registration", error);
 	}
 
-	markToolsChanged(): void {
+	markToolsChanged(cause: ServerConnectionToolsChangedEvent["cause"] = "notification"): void {
 		this.#emit(this.#toolsListeners, {
 			type: "tools_changed",
 			serverName: this.serverName,
 			generation: this.#generation,
+			cause,
 		});
 	}
 
@@ -264,7 +265,7 @@ export class ServerConnection {
 		// logger, filtered by config.logLevel, burst-capped.
 		subscribeMcpServerLogging(connection.client, { logLevel: this.#config.logLevel, logger: this.#logger });
 		this.#setState("connected");
-		this.markToolsChanged();
+		this.markToolsChanged("connect");
 		return connection.client;
 	}
 

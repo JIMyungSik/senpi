@@ -4,6 +4,7 @@
  * Split out of `host-lifecycle.ts` because that file is far past the per-file ceiling and this is
  * one cohesive unit - deciding whether the host stopped or died, and recording the deaths.
  */
+import { crashingRuntimeVersions } from "../../core/process-crash-record.ts";
 import { recordHostCrash } from "./host-crash-record.ts";
 
 /**
@@ -39,5 +40,8 @@ export function noteChildExit(
 		at: new Date(now).toISOString(),
 		...(signal === null ? { code: code ?? undefined } : { signal }),
 		uptimeMs: Math.max(0, now - childStartedAt),
+		kind: "rpc-host",
+		detection: "supervisor",
+		...crashingRuntimeVersions(),
 	});
 }

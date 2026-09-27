@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { VERSION } from "../../config.ts";
 import { noteChildExit } from "./host-child-exit.ts";
 import {
 	HOST_CRASH_RECORD_LIMIT,
@@ -36,6 +37,18 @@ const observeChildExit = (dir: string, code: number | null, signal: NodeJS.Signa
 };
 
 describe("host crash records", () => {
+	it("names the process kind and the runtime that crashed (senpi#2194)", () => {
+		const dir = daemonDir();
+		observeChildExit(dir, null, "SIGSEGV", 1_000);
+
+		expect(readHostCrashRecords(dir)[0]).toMatchObject({
+			kind: "rpc-host",
+			detection: "supervisor",
+			senpiVersion: VERSION,
+			...(process.versions.bun === undefined ? {} : { bunVersion: process.versions.bun }),
+		});
+	});
+
 	it("keeps the first crash readable after a replacement host starts", () => {
 		const dir = daemonDir();
 		observeChildExit(dir, null, "SIGBUS", 3_061_000);

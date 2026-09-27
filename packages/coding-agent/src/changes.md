@@ -1,3 +1,21 @@
+## 2026-09-27 - Unsupervised processes leave a record when they crash natively (senpi#2194)
+
+### What changed
+
+- `packages/coding-agent/src/main.ts`: once the app mode is final (after `readPipedStdin`), `recordProcessLifetime(agentDir, appMode, { supervised: appMode === "rpc" })` (`src/core/process-crash-record.ts`) turns the lifetime marker of every dead senpi process into one record in `<agentDir>/process-crashes/crashes.jsonl` (`detection: "unclean_exit"`, kind, uptime to the last heartbeat, Bun and senpi versions), then writes this process's own marker unless it runs in RPC mode, whose parent already watches its exit. The marker is removed on every exit JavaScript can observe, through the `signal-exit` hook `proper-lockfile` already installs in every process, so signal behaviour is unchanged.
+
+### Why
+
+- An interactive or print process has no supervising parent (the omo launcher `execve`s into it), so a native crash such as the JSC heap corruption in senpi#1949 left nothing countable behind; only the supervised RPC host recorded its deaths (senpi#1950).
+
+### Why an extension could not handle it
+
+- The marker has to exist before extensions load and must cover processes whose extension set is not known, and the sweep has to run on every launch whatever extensions are installed.
+
+### Expected merge conflict zones
+
+- `packages/coding-agent/src/main.ts`: the two lines after `time("readPipedStdin")` and one import.
+
 ## 2026-09-27 - --continue and --resume reach a moved repository's sessions (senpi#2184)
 
 ### What changed
