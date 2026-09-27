@@ -357,6 +357,7 @@ user sends prompt ────────────────────�
   │   └─► turn_end                                 │       │
   │                                                        │
   ├─► agent_end                                            │
+  ├─► before_retry_fallback (can request one same-model retry before native fallback)
   └─► agent_settled (no retry/compaction/follow-up left)   │
                                                            │
 user sends another prompt ◄────────────────────────────────┘
@@ -897,6 +898,30 @@ pi.on("after_provider_response", (event, ctx) => {
 ```
 
 Header availability depends on provider and transport. Providers that abstract HTTP responses may not expose headers.
+
+#### before_retry_fallback
+
+Fired immediately before senpi applies native model fallback (`RetryFallbackController.tryFallback`). The event is session-local and async. It exposes the current provider, model, and a normalized fallback reason. It never includes credentials, headers, or raw error text.
+
+A handler can request one same-model retry before the configured fallback chain advances, or stop model fallback for an error class the extension considers terminal. Neither decision writes shared settings. For a retry, Senpi keeps the current provider/model, removes the failed assistant message, uses zero delay, and schedules exactly one normal continuation.
+
+Retry decisions are bounded by the existing turn retry budget (`retry.maxRetries` or the provider's retry profile). Once that budget is spent, an `{ action: "retry-same-model" }` result is ignored and native fallback proceeds. `{ action: "stop" }` wins over retry decisions from other handlers. If no handler returns an action, native fallback is unchanged. Handler exceptions fail open: senpi reports an extension error and continues with native fallback.
+
+```typescript
+pi.on("before_retry_fallback", async (event, ctx) => {
+  // event.provider - current provider id (never a credential)
+  // event.model - current model id
+  // event.reason - "transient" | "refusal" | "hard-error" | "billing"
+
+  if (event.reason === "billing" || event.reason === "transient") {
+    return { action: "retry-same-model" };
+  }
+
+  return { action: "stop" };
+});
+```
+
+Return `{ action: "retry-same-model" }` to defer native fallback for one bounded same-model retry, `{ action: "stop" }` to make the current error terminal, or `undefined` to leave native fallback unchanged.
 
 ### Model Events
 

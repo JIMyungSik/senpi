@@ -1,3 +1,21 @@
+## 2026-09-27 - Session-local `before_retry_fallback` can defer native model fallback
+
+### What changed
+
+- `packages/coding-agent/src/core/agent-session.ts`: `_handleRetryableError`'s local `tryFallback` wrapper asks `before_retry_fallback` immediately before `RetryFallbackController.tryFallback`. A `retry-same-model` decision keeps the current provider/model, increments the existing turn retry counter, uses zero delay, removes the failed assistant message, and schedules exactly one normal continuation. The retry decision is ignored once the turn budget is spent, so a handler cannot loop forever. A `stop` decision makes the current fallback attempt unavailable. When no handler returns an action, or a handler throws, native fallback is unchanged.
+
+### Why
+
+OAR needs one bounded same-model retry after an already-completed account failover before the configured fallback chain advances. Dynamic chain mutation writes shared settings and races across sessions; a direct model switch does not reliably restart hard-error turns.
+
+### Why an extension could not handle it
+
+`RetryFallbackController.tryFallback` and the continuation path live inside `AgentSession`. Existing events cannot skip the switch or re-enter `_scheduleContinuationAfterCurrentEvent` after a hard error or no-hint 429.
+
+### Expected merge conflict zones
+
+- MEDIUM: the `tryFallback` wrapper, `_retryAttempt` bookkeeping after a successful fallback, and the new `_tryDeferFallbackForSameModelRetry` helper next to `_handleRetryableError` in `agent-session.ts`.
+
 ## 2026-09-27 - A provider-rejected image no longer poisons later turns (senpi#2170)
 
 ### What changed

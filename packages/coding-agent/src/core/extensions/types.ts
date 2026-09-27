@@ -338,6 +338,9 @@ export interface ExtensionUIContext {
 // Extension Context
 // ============================================================================
 
+/** Normalized reason the host is about to apply native model fallback. */
+export type RetryFallbackReason = "transient" | "refusal" | "hard-error" | "billing";
+
 export interface RetryFallbackSettings {
 	modelFallback: boolean;
 	chains: Readonly<Record<string, readonly string[]>>;
@@ -1401,6 +1404,21 @@ export interface ToolActivatedEvent {
 	toolNames: string[];
 }
 
+/**
+ * Fired immediately before `RetryFallbackController.tryFallback`.
+ * Session-local: the decision never writes shared settings.
+ * Credentials, headers, and raw error text are omitted.
+ */
+export interface BeforeRetryFallbackEvent {
+	type: "before_retry_fallback";
+	/** Current provider id. Never a credential. */
+	provider: string;
+	/** Current model id. */
+	model: string;
+	/** Normalized reason the host is about to apply native model fallback. */
+	reason: RetryFallbackReason;
+}
+
 // ============================================================================
 // User Bash Events
 // ============================================================================
@@ -1682,6 +1700,7 @@ export type ExtensionEvent =
 	| SystemPromptChangeEvent
 	| ThinkingLevelSelectEvent
 	| ToolActivatedEvent
+	| BeforeRetryFallbackEvent
 	| UserBashEvent
 	| InputEvent
 	| InputDispositionEvent
@@ -1734,6 +1753,20 @@ export interface BeforeAgentStartEventResult {
 	/** Replace the system prompt for this turn. If multiple extensions return this, they are chained. */
 	systemPrompt?: string;
 }
+
+export type BeforeRetryFallbackEventResult =
+	| {
+			/**
+			 * Request one same-model retry before native fallback.
+			 * Honored only while the current turn retry budget still has a slot;
+			 * a handler cannot loop fallback forever.
+			 */
+			action: "retry-same-model";
+	  }
+	| {
+			/** Stop native model fallback and leave the provider failure terminal. */
+			action: "stop";
+	  };
 
 export interface SessionBeforeSwitchResult {
 	cancel?: boolean;
@@ -1982,6 +2015,10 @@ export interface ExtensionAPI {
 	on(event: "tool_execution_update", handler: ExtensionHandler<ToolExecutionUpdateEvent>): void;
 	on(event: "tool_execution_end", handler: ExtensionHandler<ToolExecutionEndEvent>): void;
 	on(event: "model_select", handler: ExtensionHandler<ModelSelectEvent, ModelSelectEventResult>): void;
+	on(
+		event: "before_retry_fallback",
+		handler: ExtensionHandler<BeforeRetryFallbackEvent, BeforeRetryFallbackEventResult>,
+	): void;
 	on(event: "system_prompt_change", handler: ExtensionHandler<SystemPromptChangeEvent>): void;
 	on(event: "thinking_level_select", handler: ExtensionHandler<ThinkingLevelSelectEvent>): void;
 	on(event: "tool_activated", handler: ExtensionHandler<ToolActivatedEvent>): void;
