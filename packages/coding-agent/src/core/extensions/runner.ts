@@ -31,6 +31,8 @@ import type {
 	BeforeAgentStartEventResult,
 	BeforeProviderHeadersEvent,
 	BeforeProviderRequestEvent,
+	BeforeRetryFallbackEvent,
+	BeforeRetryFallbackEventResult,
 	CompactOptions,
 	ContextEvent,
 	ContextEventResult,
@@ -155,6 +157,7 @@ type RunnerEmitEvent = Exclude<
 	| BeforeProviderRequestEvent
 	| BeforeProviderHeadersEvent
 	| BeforeAgentStartEvent
+	| BeforeRetryFallbackEvent
 	| ModelSelectEvent
 	| MessageEndEvent
 	| ResourcesDiscoverEvent
@@ -1547,6 +1550,39 @@ export class ExtensionRunner {
 		}
 
 		return result;
+	}
+
+	async emitBeforeRetryFallback(event: BeforeRetryFallbackEvent): Promise<BeforeRetryFallbackEventResult | undefined> {
+		let retry = false;
+
+		for (const ext of this.extensions) {
+			const handlers = ext.handlers.get("before_retry_fallback");
+			if (!handlers || handlers.length === 0) continue;
+
+			for (const handler of handlers) {
+				try {
+					const handlerResult = await handler(event, this.createContext(ext.path));
+					const action = (handlerResult as BeforeRetryFallbackEventResult | undefined)?.action;
+					if (action === "stop") {
+						return { action: "stop" };
+					}
+					if (action === "retry-same-model") {
+						retry = true;
+					}
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					const stack = err instanceof Error ? err.stack : undefined;
+					this.emitError({
+						extensionPath: ext.path,
+						event: "before_retry_fallback",
+						error: message,
+						stack,
+					});
+				}
+			}
+		}
+
+		return retry ? { action: "retry-same-model" } : undefined;
 	}
 
 	async emitMessageEnd(event: MessageEndEvent): Promise<AgentMessage | undefined> {

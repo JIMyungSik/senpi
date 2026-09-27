@@ -1,5 +1,26 @@
 # Core Extensions Changes
 
+## 2026-09-27 - Session-local `before_retry_fallback` can defer native model fallback
+
+### What changed
+
+- `packages/coding-agent/src/core/extensions/types.ts`: new `RetryFallbackReason`, `BeforeRetryFallbackEvent` (`provider`, `model`, `reason`; no credentials), and a discriminated `BeforeRetryFallbackEventResult` (`retry-same-model` or `stop`). `ExtensionEvent` includes the event. `ExtensionAPI.on("before_retry_fallback", ...)` is a typed value-returning subscription.
+- `packages/coding-agent/src/core/extensions/runner.ts`: `emitBeforeRetryFallback` dispatches every registered handler asynchronously, gives `stop` precedence over retry decisions, and fail-opens (reports `emitError`, continues) when a handler throws.
+- `packages/coding-agent/docs/extensions.md`: documents the event, result, budget bound, and fail-open contract.
+
+### Why
+
+OAR needs to consume an already-completed account failover and request one same-model retry before `RetryFallbackController` advances a configured Grok-to-Astra chain. Billing hard errors and no-hint 429 currently switch immediately. Mutating the shared fallback chain is rejected because `sessionSettings.flush` races across sessions, and a direct model switch does not reliably restart a hard-error turn.
+
+### Why an extension could not handle it
+
+Only the host can skip `tryFallback` and re-enter the existing zero-delay continuation path. No existing event observes the fallback decision or can keep the current provider/model for one bounded retry.
+
+### Expected merge conflict zones
+
+- LOW: `RetryFallbackReason` next to `RetryFallbackSettings`; `BeforeRetryFallbackEvent` after `ThinkingLevelSelectEvent`; `BeforeRetryFallbackEvent` in `ExtensionEvent`; `BeforeRetryFallbackEventResult` after `BeforeAgentStartEventResult`; the `before_retry_fallback` overload of `ExtensionAPI.on` in `types.ts`.
+- LOW: `emitBeforeRetryFallback` next to `emitModelSelect` and the `RunnerEmitEvent` exclusion list in `runner.ts`.
+
 ## 2026-09-27 - Directory entries and JSON dependencies load on Bun 1.3.x (senpi#2164)
 
 ### What changed
